@@ -3,3 +3,4 @@ toml>=0.10.2
 numpy
 soundfile>=0.12.1
 wave>=0.0.2
+base64io>=1.0.3

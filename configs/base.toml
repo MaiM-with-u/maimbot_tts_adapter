@@ -55,3 +55,11 @@ port = 8080
 
 [routes]
 qq = "http://127.0.0.1:8090/ws"
+
+[pipeline]
+# pipeline预设配置
+default_preset = "default"  # 默认使用的预设名称
+
+# pipeline平台预设映射
+[pipeline.platform_presets]
+qq = "default"       # QQ平台使用default预设

@@ -72,17 +72,32 @@ class ServerConfig:
 
 
 @dataclass
+class PipelineConfig:
+    default_preset: str
+    platform_presets: Dict[str, str]
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'PipelineConfig':
+        return cls(
+            default_preset=data.get('default_preset', 'default'),
+            platform_presets=data.get('platform_presets', {})
+        )
+
+
+@dataclass
 class BaseConfig:
     tts: TTSConfig
     server: ServerConfig
     routes: Dict[str, str]
+    pipeline: PipelineConfig
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'BaseConfig':
         return cls(
             tts=TTSConfig.from_dict(data['tts']),
             server=ServerConfig(**data['server']),
-            routes=data['routes']
+            routes=data['routes'],
+            pipeline=PipelineConfig.from_dict(data.get('pipeline', {}))
         )
 
 
@@ -112,6 +127,10 @@ class Config:
     @property
     def routes(self) -> Dict[str, str]:
         return self.base_config.routes
+
+    @property
+    def pipeline(self) -> PipelineConfig:
+        return self.base_config.pipeline
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
