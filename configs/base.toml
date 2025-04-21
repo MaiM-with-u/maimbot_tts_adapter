@@ -29,25 +29,25 @@ super_sampling = false    # 是否启用超采样
 
 [tts.models]
 # GPT模型配置
-gpt_model = "GPT-SoVITS/pretrained_models/Xiang Naimei-e5.ckpt"  # GPT模型路径
-sovits_model = "GPT-SoVITS/pretrained_models/Xiang Naimei_e4_s248.pth"  # SoVITS模型路径
+gpt_model = "GPT_SoVITS/pretrained_models/XiangNaimei-e5.ckpt"  # GPT模型路径
+sovits_model = "GPT_SoVITS/pretrained_models/XiangNaimei_e4_s248.pth"  # SoVITS模型路径
 
 # 自定义角色预设
 [tts.models.presets]
 # 预设角色配置示例
 [tts.models.presets.default]
 name = "默认角色"
-ref_audio = "GPT-SoVITS/voices/音频/平淡.WAV"
+ref_audio = "GPT_SoVITS/voices/平淡.WAV"
 prompt_text = "嗨！我每天都会像这样做发声训练的。"
 gpt_model = ""     # 为空则使用默认GPT模型
 sovits_model = ""  # 为空则使用默认SoVITS模型
 
 [tts.models.presets.custom1]
 name = "kanami"
-ref_audio = "GPT-SoVITS/voices/音频/平淡.WAV"
+ref_audio = "GPT_SoVITS/pretrained_models/voices/平淡.WAV"
 prompt_text = "嗨！我每天都会像这样做发声训练的。"
-gpt_model = "GPT-SoVITS/pretrained_models/Xiang Naimei-e5.ckpt"
-sovits_model = "GPT-SoVITS/pretrained_models/Xiang Naimei_e4_s248.pth"
+gpt_model = "GPT_SoVITS/pretrained_models/XiangNaimei-e5.ckpt"
+sovits_model = "GPT_SoVITS/pretrained_models/XiangNaimei_e4_s248.pth"
 
 [server]
 host = "127.0.0.1"
