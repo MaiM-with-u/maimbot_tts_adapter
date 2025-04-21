@@ -27,21 +27,6 @@ class TTSModel:
         self._current_preset = "default"  # 当前使用的角色预设名称
         self._initialized = False  # 标记是否已完成初始化
 
-    def _ensure_api_available(self, timeout=5):
-        """确保API服务可用
-
-        Args:
-            timeout: 连接超时时间（秒）
-
-        Returns:
-            bool: API是否可用
-        """
-        try:
-            requests.get(f"{self.base_url}/ping", timeout=timeout)
-            return True
-        except requests.exceptions.RequestException:
-            return False
-
     def initialize(self):
         """初始化模型和预设
 
@@ -50,9 +35,6 @@ class TTSModel:
         if self._initialized:
             return
         self._initialized = True
-
-        if not self._ensure_api_available():
-            raise ConnectionError("无法连接到GPT-SoVITS API服务")
 
         # 初始化默认模型
         if self.config:
@@ -278,11 +260,117 @@ class TTSModel:
             "sample_steps": sample_steps,
             "super_sampling": super_sampling,
         }
-
-        response = requests.get(f"{self.base_url}/tts", params=params)
+        # print(f"请求参数: {params}")
+        response = requests.get(f"{self.base_url}/tts", params=params, timeout=60)
         if response.status_code != 200:
             raise Exception(response.json()["message"])
         return response.content
+
+    def tts_stream(
+        self,
+        text,
+        ref_audio_path=None,
+        aux_ref_audio_paths=None,
+        text_lang=None,
+        prompt_text=None,
+        prompt_lang=None,
+        top_k=None,
+        top_p=None,
+        temperature=None,
+        text_split_method=None,
+        batch_size=None,
+        batch_threshold=None,
+        speed_factor=None,
+        media_type=None,
+        repetition_penalty=None,
+        sample_steps=None,
+        super_sampling=None,
+    ):
+        """流式文本转语音,返回音频数据流
+
+        参数与tts()方法相同,但streaming_mode强制为True
+        """
+        if not self._initialized:
+            self.initialize()
+
+        # 优先使用传入的ref_audio_path和prompt_text,否则使用持久化的值
+        ref_audio_path = ref_audio_path or self._ref_audio_path
+        if not ref_audio_path:
+            raise ValueError("未设置参考音频")
+
+        prompt_text = prompt_text if prompt_text is not None else self._prompt_text
+
+        # 使用配置文件默认值
+        if self.config:
+            cfg = self.config.tts
+            text_lang = text_lang or cfg.text_language
+            prompt_lang = prompt_lang or cfg.prompt_language
+            media_type = media_type or cfg.media_type
+            top_k = top_k or cfg.top_k
+            top_p = top_p or cfg.top_p
+            temperature = temperature or cfg.temperature
+            text_split_method = text_split_method or cfg.text_split_method
+            batch_size = batch_size or cfg.batch_size
+            batch_threshold = batch_threshold or cfg.batch_threshold
+            speed_factor = speed_factor or cfg.speed_factor
+            repetition_penalty = repetition_penalty or cfg.repetition_penalty
+            sample_steps = sample_steps or cfg.sample_steps
+            super_sampling = (
+                super_sampling if super_sampling is not None else cfg.super_sampling
+            )
+        else:
+            # 使用默认值
+            text_lang = text_lang or "zh"
+            prompt_lang = prompt_lang or "zh"
+            media_type = media_type or "wav"
+            top_k = top_k or 5
+            top_p = top_p or 1.0
+            temperature = temperature or 1.0
+            text_split_method = text_split_method or "cut5"
+            batch_size = batch_size or 1
+            batch_threshold = batch_threshold or 0.75
+            speed_factor = speed_factor or 1.0
+            repetition_penalty = repetition_penalty or 1.35
+            sample_steps = sample_steps or 32
+            super_sampling = super_sampling or False
+
+        params = {
+            "text": text,
+            "text_lang": text_lang,
+            "ref_audio_path": ref_audio_path,
+            "aux_ref_audio_paths": aux_ref_audio_paths,
+            "prompt_text": prompt_text,
+            "prompt_lang": prompt_lang,
+            "top_k": top_k,
+            "top_p": top_p,
+            "temperature": temperature,
+            "text_split_method": text_split_method,
+            "batch_size": batch_size,
+            "batch_threshold": batch_threshold,
+            "speed_factor": speed_factor,
+            "streaming_mode": True,  # 强制使用流式模式
+            "media_type": media_type,
+            "repetition_penalty": repetition_penalty,
+            "sample_steps": sample_steps,
+            "super_sampling": super_sampling,
+        }
+
+        # print(f"流式请求参数: {params}")
+
+        # 使用自定义超时，并设置较小的块大小来保持流式传输的响应性
+        response = requests.get(
+            f"{self.base_url}/tts",
+            params=params,
+            stream=True,
+            timeout=(3.05, None),  # (连接超时, 读取超时)
+            headers={"Connection": "keep-alive"},
+        )
+
+        if response.status_code != 200:
+            raise Exception(response.json()["message"])
+
+        # 使用更小的块大小来提高流式传输的响应性
+        return response.iter_content(chunk_size=4096)
 
 
 def test_tts_model():

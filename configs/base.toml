@@ -1,3 +1,18 @@
+[server]
+host = "127.0.0.1"
+port = 8070
+
+[routes]
+qq111 = "http://127.0.0.1:8090/ws"
+
+[pipeline]
+# pipeline预设配置
+default_preset = "default"  # 默认使用的预设名称
+
+# pipeline平台预设映射
+[pipeline.platform_presets]
+qq = "default"       # QQ平台使用default预设
+
 [tts]
 # GPT-SoVITS API 配置
 api_url = "http://127.0.0.1:11000"
@@ -37,7 +52,7 @@ sovits_model = "GPT_SoVITS/pretrained_models/XiangNaimei_e4_s248.pth"  # SoVITS�
 # 预设角色配置示例
 [tts.models.presets.default]
 name = "默认角色"
-ref_audio = "GPT_SoVITS/voices/平淡.WAV"
+ref_audio = "GPT_SoVITS/pretrained_models/voices/平淡.WAV"
 prompt_text = "嗨！我每天都会像这样做发声训练的。"
 gpt_model = ""     # 为空则使用默认GPT模型
 sovits_model = ""  # 为空则使用默认SoVITS模型
@@ -49,17 +64,4 @@ prompt_text = "嗨！我每天都会像这样做发声训练的。"
 gpt_model = "GPT_SoVITS/pretrained_models/XiangNaimei-e5.ckpt"
 sovits_model = "GPT_SoVITS/pretrained_models/XiangNaimei_e4_s248.pth"
 
-[server]
-host = "127.0.0.1"
-port = 8080
 
-[routes]
-qq = "http://127.0.0.1:8090/ws"
-
-[pipeline]
-# pipeline预设配置
-default_preset = "default"  # 默认使用的预设名称
-
-# pipeline平台预设映射
-[pipeline.platform_presets]
-qq = "default"       # QQ平台使用default预设
