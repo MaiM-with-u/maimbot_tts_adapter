@@ -20,21 +20,21 @@ class TTSModels:
     presets: Dict[str, TTSPreset]
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'TTSModels':
+    def from_dict(cls, data: Dict[str, Any]) -> "TTSModels":
         presets = {
             name: TTSPreset(**preset_data)
-            for name, preset_data in data.get('presets', {}).items()
+            for name, preset_data in data.get("presets", {}).items()
         }
         return cls(
-            gpt_model=data.get('gpt_model', ''),
-            sovits_model=data.get('sovits_model', ''),
-            presets=presets
+            gpt_model=data.get("gpt_model", ""),
+            sovits_model=data.get("sovits_model", ""),
+            presets=presets,
         )
 
 
 @dataclass
 class TTSConfig:
-    api_url: str
+    # api_url: str
     host: str
     port: int
     ref_audio_path: str
@@ -57,11 +57,11 @@ class TTSConfig:
     models: TTSModels
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'TTSConfig':
-        models_data = data.pop('models', {})
+    def from_dict(cls, data: Dict[str, Any]) -> "TTSConfig":
+        models_data = data.pop("models", {})
         return cls(
-            **{k: v for k, v in data.items() if k != 'models'},
-            models=TTSModels.from_dict(models_data)
+            **{k: v for k, v in data.items() if k != "models"},
+            models=TTSModels.from_dict(models_data),
         )
 
 
@@ -77,10 +77,10 @@ class PipelineConfig:
     platform_presets: Dict[str, str]
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'PipelineConfig':
+    def from_dict(cls, data: Dict[str, Any]) -> "PipelineConfig":
         return cls(
-            default_preset=data.get('default_preset', 'default'),
-            platform_presets=data.get('platform_presets', {})
+            default_preset=data.get("default_preset", "default"),
+            platform_presets=data.get("platform_presets", {}),
         )
 
 
@@ -92,12 +92,12 @@ class BaseConfig:
     pipeline: PipelineConfig
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'BaseConfig':
+    def from_dict(cls, data: Dict[str, Any]) -> "BaseConfig":
         return cls(
-            tts=TTSConfig.from_dict(data['tts']),
-            server=ServerConfig(**data['server']),
-            routes=data['routes'],
-            pipeline=PipelineConfig.from_dict(data.get('pipeline', {}))
+            tts=TTSConfig.from_dict(data["tts"]),
+            server=ServerConfig(**data["server"]),
+            routes=data["routes"],
+            pipeline=PipelineConfig.from_dict(data.get("pipeline", {})),
         )
 
 
