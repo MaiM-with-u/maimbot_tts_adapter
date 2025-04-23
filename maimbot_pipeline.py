@@ -123,6 +123,12 @@ class TTSPipeline:
 
         # 发送原始消息到服务器
         await self.server.send_message(message)
+        if (
+            not message.message_info.additional_config
+            or not message.message_info.additional_config.get("allow_tts", False)
+        ):
+            print("跳过TTS处理")
+            return
 
         message_text = []
 
