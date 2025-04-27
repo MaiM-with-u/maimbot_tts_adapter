@@ -122,7 +122,7 @@ class TTSPipeline:
         message = MessageBase.from_dict(message_dict)
 
         # 发送原始消息到服务器
-        await self.server.send_message(message)
+        # await self.server.send_message(message)
         if (
             not message.message_info.additional_config
             or not message.message_info.additional_config.get("allow_tts", False)
@@ -172,6 +172,9 @@ class TTSPipeline:
                             new_seg = Seg(type="voice", data=encoded_chunk)
                             message.message_segment = new_seg
                             message.message_info.format_info.content_format = ["voice"]
+                            message.message_info.additional_config["original_text"] = (
+                                text
+                            )
 
                             # 发送到下游
                             await self.server.send_message(message)
@@ -192,6 +195,7 @@ class TTSPipeline:
                 new_seg = Seg(type="voice", data=encoded_audio)
                 message.message_segment = new_seg
                 message.message_info.format_info.content_format = ["voice"]
+                message.message_info.additional_config["original_text"] = text
 
                 # 发送到下游
                 await self.server.send_message(message)
