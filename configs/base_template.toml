@@ -64,5 +64,3 @@ ref_audio = "GPT_SoVITS/pretrained_models/voices/平淡.WAV"
 prompt_text = "嗨！我每天都会像这样做发声训练的。"
 gpt_model = "GPT_SoVITS/pretrained_models/XiangNaimei-e5.ckpt"
 sovits_model = "GPT_SoVITS/pretrained_models/XiangNaimei_e4_s248.pth"
-
-
