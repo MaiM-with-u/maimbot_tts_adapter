@@ -13,6 +13,7 @@ import io
 import wave
 import asyncio
 from typing import List, Tuple
+# import time
 
 
 class TTSPipeline:
@@ -52,6 +53,12 @@ class TTSPipeline:
 
         # 加载默认预设
         self.tts_model.load_preset(self.config.pipeline.default_preset)
+
+        # 消息缓冲区相关
+        self.buffer_lock = asyncio.Lock()
+        self.message_buffer = []
+        self.buffer_timer_task = None
+        self.buffer_timeout = getattr(self.config.pipeline, "buffer_timeout", 1.0)  # 默认1秒
 
     def start(self):
         """启动服务器和路由"""
@@ -136,10 +143,8 @@ class TTSPipeline:
         return message_text, have_text, have_other
 
     async def client_handle(self, message_dict: dict) -> None:
-        """处理客户端收到的消息并进行TTS转换"""
-        # print(f"Received message from client: {message_dict}")
+        """处理客户端收到的消息并进行TTS转换（带缓冲）"""
         message = MessageBase.from_dict(message_dict)
-
         streaming_mode = (
             self.config.tts.streaming_mode
             if hasattr(self.config.tts, "streaming_mode")
@@ -148,49 +153,58 @@ class TTSPipeline:
         if streaming_mode:
             await self.send_voice_stream(message)
             return
-        # if (
-        #     not message.message_info.additional_config
-        #     or not message.message_info.additional_config.get("allow_tts", False)
-        # ):
-        #     print("跳过TTS处理")
-        #     return
 
-        # 前置以减少切换预设的次数
         message_text, have_text, have_other = self.process_seg(message.message_segment)
         if have_other and not have_text:
-            # 直接透传
             await self.server.send_message(message)
             return
         elif have_other and have_text:
-            # 声明丢弃了其他类型的消息
             print("检测到混合类型消息，丢弃其他类型")
 
-        if message_text is None:
+        if not message_text:
             print("处理文本为空，跳过发送")
             return
 
-        # 根据平台切换预设
-        platform = message.message_info.platform
-        preset_name = self.get_platform_preset(platform)
-        if self.tts_model._current_preset != preset_name:
-            self.tts_model.load_preset(preset_name)
+        # 缓冲区处理
+        async with self.buffer_lock:
+            self.message_buffer.extend(message_text)
+            # 保存最后一条消息的 message 对象用于后续发送
+            self.last_message_obj = message
+            # 重置定时器
+            if self.buffer_timer_task and not self.buffer_timer_task.done():
+                self.buffer_timer_task.cancel()
+            self.buffer_timer_task = asyncio.create_task(self._buffer_timeout_handler())
 
-        text = ",".join(message_text)
-        print("处理文本:", text)
-
-        new_seg = await self.get_voice_no_stream(text)
-        if not new_seg:
-            print("语音消息为空，跳过发送")
-            return
-
-        message.message_segment = new_seg
-        message.message_info.format_info.content_format = ["voice"]
-        if not message.message_info.additional_config:
-            message.message_info.additional_config = {}
-        message.message_info.additional_config["original_text"] = text
-
-        await self.server.send_message(message)
-        return
+    async def _buffer_timeout_handler(self):
+        try:
+            await asyncio.sleep(self.buffer_timeout)
+            async with self.buffer_lock:
+                if not self.message_buffer:
+                    return
+                # 拼接文本
+                text = ",".join(self.message_buffer)
+                print("缓冲区合成文本:", text)
+                # 取最后一条消息对象作为模板
+                message = self.last_message_obj
+                # 根据平台切换预设
+                platform = message.message_info.platform
+                preset_name = self.get_platform_preset(platform)
+                if self.tts_model._current_preset != preset_name:
+                    self.tts_model.load_preset(preset_name)
+                new_seg = await self.get_voice_no_stream(text)
+                if not new_seg:
+                    print("语音消息为空，跳过发送")
+                    self.message_buffer.clear()
+                    return
+                message.message_segment = new_seg
+                message.message_info.format_info.content_format = ["voice"]
+                if not message.message_info.additional_config:
+                    message.message_info.additional_config = {}
+                message.message_info.additional_config["original_text"] = text
+                await self.server.send_message(message)
+                self.message_buffer.clear()
+        except asyncio.CancelledError:
+            pass
 
     async def get_voice_no_stream(self, text: str):
         try:
