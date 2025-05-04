@@ -1,5 +1,4 @@
 import requests
-import os
 from utils.config import Config
 from typing import Optional, Dict, Any
 
@@ -377,9 +376,7 @@ def test_tts_model():
     """测试TTS模型的基本功能和性能"""
     from utils.config import get_default_config
     import wave
-    import os
     import time
-    import requests.exceptions
     import statistics
 
     print("开始TTS模型测试...\n")
@@ -389,8 +386,8 @@ def test_tts_model():
     print("1. 测试API连接...")
     config = get_default_config()
     tts = TTSModel(config)
-    max_retries = 3
-    retry_delay = 2  # 秒
+    # max_retries = 3
+    # retry_delay = 2  # 秒
 
     # 2. 测试预设管理
     print("\n2. 测试预设管理...")
@@ -403,7 +400,7 @@ def test_tts_model():
 
         # 测试加载默认预设
         tts.load_preset("default")
-        print(f"✓ 成功加载默认预设")
+        print("✓ 成功加载默认预设")
         print(f"  - 参考音频: {tts.ref_audio_path}")
         print(f"  - 提示文本: {tts.prompt_text}")
 
@@ -463,7 +460,7 @@ def test_tts_model():
                     performance_stats["audio_durations"].append(duration)
                     performance_stats["chars_per_second"].append(chars_per_sec)
 
-                    print(f"✓ 成功生成音频文件:")
+                    print("✓ 成功生成音频文件:")
                     print(f"  - 采样率: {wav_file.getframerate()} Hz")
                     print(f"  - 时长: {duration:.2f} 秒")
                     print(f"  - 字符处理速度: {chars_per_sec:.2f} 字/秒")

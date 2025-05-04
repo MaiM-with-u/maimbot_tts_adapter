@@ -6,12 +6,13 @@ from maim_message import (
     MessageBase,
     Seg,
 )
-from utils.config import get_default_config, load_config, Config
+from utils.config import get_default_config, Config
 from tts_model import TTSModel
 import base64
 import io
 import wave
 import asyncio
+from typing import List, Tuple
 
 
 class TTSPipeline:
@@ -116,21 +117,57 @@ class TTSPipeline:
         """
         return base64.b64encode(audio_chunk).decode("utf-8")
 
-    async def client_handle(self, message_dict: dict):
-        """根据streaming_mode参数处理消息"""
+    def process_seg(self, seg: Seg) -> Tuple[List[str], bool, bool]:
+        have_text = False
+        have_other = False
+        message_text = []
+        if seg.type == "seglist":
+            for s in seg.data:
+                zip_content = self.process_seg(s)
+                message_text += zip_content[0]
+                have_text = have_text or zip_content[1]
+                have_other = have_other or zip_content[2]
+        if seg.type == "text":
+            message_text.append(seg.data)
+            have_text = True
+        else:
+            # 标记含有其他类型的消息
+            have_other = True
+        return message_text, have_text, have_other
+
+    async def client_handle(self, message_dict: dict) -> None:
+        """处理客户端收到的消息并进行TTS转换"""
         # print(f"Received message from client: {message_dict}")
         message = MessageBase.from_dict(message_dict)
 
-        # 发送原始消息到服务器
-        await self.server.send_message(message)
-        if (
-            not message.message_info.additional_config
-            or not message.message_info.additional_config.get("allow_tts", False)
-        ):
-            print("跳过TTS处理")
+        streaming_mode = (
+            self.config.tts.streaming_mode
+            if hasattr(self.config.tts, "streaming_mode")
+            else False
+        )
+        if streaming_mode:
+            await self.send_voice_stream(message)
             return
+        # if (
+        #     not message.message_info.additional_config
+        #     or not message.message_info.additional_config.get("allow_tts", False)
+        # ):
+        #     print("跳过TTS处理")
+        #     return
 
-        message_text = []
+        # 前置以减少切换预设的次数
+        message_text, have_text, have_other = self.process_seg(message.message_segment)
+        if have_other and not have_text:
+            # 直接透传
+            await self.server.send_message(message)
+            return
+        elif have_other and have_text:
+            # 声明丢弃了其他类型的消息
+            print("检测到混合类型消息，丢弃其他类型")
+
+        if message_text is None:
+            print("处理文本为空，跳过发送")
+            return
 
         # 根据平台切换预设
         platform = message.message_info.platform
@@ -138,79 +175,80 @@ class TTSPipeline:
         if self.tts_model._current_preset != preset_name:
             self.tts_model.load_preset(preset_name)
 
-        def process_seg(seg: Seg):
-            if seg.type == "seglist":
-                for s in seg.data:
-                    process_seg(s)
-            if seg.type == "text":
-                message_text.append(seg.data)
-
-        process_seg(message.message_segment)
         text = ",".join(message_text)
         print("处理文本:", text)
 
+        new_seg = await self.get_voice_no_stream(text)
+        if not new_seg:
+            print("语音消息为空，跳过发送")
+            return
+
+        message.message_segment = new_seg
+        message.message_info.format_info.content_format = ["voice"]
+        if not message.message_info.additional_config:
+            message.message_info.additional_config = {}
+        message.message_info.additional_config["original_text"] = text
+
+        await self.server.send_message(message)
+        return
+
+    async def get_voice_no_stream(self, text: str):
         try:
-            # 检查配置中的streaming_mode设置
-            streaming_mode = (
-                self.config.tts.streaming_mode
-                if hasattr(self.config.tts, "streaming_mode")
-                else False
-            )
-
-            if streaming_mode:
-                # 使用流式TTS
-                audio_stream = self.tts_model.tts_stream(text=text)
-
-                # 从音频流中读取和处理数据
-                for chunk in audio_stream:
-                    if chunk:  # 确保chunk不为空
-                        try:
-                            # 对音频数据进行base64编码
-                            encoded_chunk = self.encode_audio_stream(chunk)
-
-                            # 创建语音消息
-                            new_seg = Seg(type="voice", data=encoded_chunk)
-                            message.message_segment = new_seg
-                            message.message_info.format_info.content_format = ["voice"]
-                            if not message.message_info.additional_config:
-                                message.message_info.additional_config = {}
-                            message.message_info.additional_config["original_text"] = (
-                                text
-                            )
-
-                            # 发送到下游
-                            await self.server.send_message(message)
-                        except Exception as e:
-                            print(f"处理音频块时发生错误: {str(e)}")
-                            continue
-
-                print("流式语音消息发送完成")
-
-            else:
-                # 使用非流式TTS
-                audio_data = self.tts_model.tts(text=text)
-
-                # 对整个音频数据进行base64编码
-                encoded_audio = self.encode_audio(audio_data)
-
-                # 创建语音消息
-                new_seg = Seg(type="voice", data=encoded_audio)
-                message.message_segment = new_seg
-                message.message_info.format_info.content_format = ["voice"]
-                if not message.message_info.additional_config:
-                    message.message_info.additional_config = {}
-                message.message_info.additional_config["original_text"] = text
-
-                # 发送到下游
-                await self.server.send_message(message)
-                print("非流式语音消息发送完成")
-
+            # 使用非流式TTS
+            audio_data = self.tts_model.tts(text=text)
+            # 对整个音频数据进行base64编码
+            encoded_audio = self.encode_audio(audio_data)
+            # 创建语音消息
+            new_seg = Seg(type="voice", data=encoded_audio)
+            return new_seg
         except Exception as e:
             print(f"TTS处理过程中发生错误: {str(e)}")
-            # 可以在这里添加错误处理逻辑，比如发送错误消息给客户端
+            print(f"文本为: {text}")
+            return None
+
+    async def send_voice_stream(self, message: MessageBase) -> None:
+        """流式发送语音消息"""
+        # 根据平台切换预设
+        platform = message.message_info.platform
+        preset_name = self.get_platform_preset(platform)
+        if self.tts_model._current_preset != preset_name:
+            self.tts_model.load_preset(preset_name)
+
+        message_text = self.process_seg(message.message_segment)
+        if not message_text:
+            print("处理文本为空，跳过发送")
+            return
+        text = ",".join(message_text)
+        try:
+            audio_stream = self.tts_model.tts_stream(text=text)
+            # 从音频流中读取和处理数据
+            for chunk in audio_stream:
+                if chunk:  # 确保chunk不为空
+                    try:
+                        # 对音频数据进行base64编码
+                        encoded_chunk = self.encode_audio_stream(chunk)
+
+                        # 创建语音消息
+                        new_seg = Seg(type="voice", data=encoded_chunk)
+                        message.message_segment = new_seg
+                        message.message_info.format_info.content_format = ["voice"]
+                        if not message.message_info.additional_config:
+                            message.message_info.additional_config = {}
+                        message.message_info.additional_config["original_text"] = text
+
+                        # 发送到下游
+                        await self.server.send_message(message)
+                    except Exception as e:
+                        print(f"处理音频块时发生错误: {str(e)}")
+                        continue
+            print("流式语音消息发送完成")
+        except Exception as e:
+            print(f"TTS处理过程中发生错误: {str(e)}")
+            print(f"文本为: {text}")
+            return None
 
     async def server_handle(self, message_data: dict):
-        """处理服务器消息"""
+        """处理服务器收到的消息"""
         message = MessageBase.from_dict(message_data)
         # print(f"Received message from server: {message_data}")
         await self.router.send_message(message)
