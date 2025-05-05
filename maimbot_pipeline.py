@@ -56,7 +56,7 @@ class TTSPipeline:
         # 按群/用户分组的文本缓冲队列和处理任务
         self.text_buffer_dict: Dict[str, asyncio.Queue[Tuple[str, MessageBase]]] = {}
         self.buffer_task_dict: Dict[str, asyncio.Task] = {}
-        self.buffer_timeout = 2.0 # 默认2秒
+        self.buffer_timeout = 2.0  # 默认2秒
 
     def start(self):
         """启动服务器和路由"""
@@ -175,9 +175,11 @@ class TTSPipeline:
             return
         group_id = str(group_id)
 
-        # 创建队列和处理任务
+        # 保证队列存在
         if group_id not in self.text_buffer_dict:
             self.text_buffer_dict[group_id] = asyncio.Queue()
+        # 创建处理任务
+        if group_id not in self.buffer_task_dict:
             self.buffer_task_dict[group_id] = asyncio.create_task(
                 self._buffer_queue_handler(group_id)
             )
@@ -224,7 +226,6 @@ class TTSPipeline:
         return
 
     async def cleanup_task(self, group_id: str):
-        _ = self.text_buffer_dict.pop(group_id, "没有对应的键")
         task = self.buffer_task_dict.pop(group_id, "没有对应的键")
         task.cancel()
 
