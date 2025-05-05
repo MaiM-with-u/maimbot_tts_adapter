@@ -13,6 +13,7 @@ import io
 import wave
 import asyncio
 from typing import List, Tuple, Dict
+import random
 
 
 class TTSPipeline:
@@ -56,7 +57,7 @@ class TTSPipeline:
         # 按群/用户分组的文本缓冲队列和处理任务
         self.text_buffer_dict: Dict[str, asyncio.Queue[Tuple[str, MessageBase]]] = {}
         self.buffer_task_dict: Dict[str, asyncio.Task] = {}
-        self.buffer_timeout = 2.0  # 默认2秒
+        self.buffer_timeout: int = 2  # 默认2秒
 
     def start(self):
         """启动服务器和路由"""
@@ -204,6 +205,11 @@ class TTSPipeline:
             print("数据为空，跳过处理")
             await self.cleanup_task(group_id)
             return
+        if random.random() > self.config.probability.voice_probability:
+            # 使用临时的原样发送方式
+            print("发送原文本")
+            await self.temporary_send_method(latest_message_obj, buffer, group_id)
+            return
         text: str = ",".join(buffer)
         print(f"[聊天: {group_id}]缓冲区合成文本:", text)
         message = latest_message_obj
@@ -242,6 +248,16 @@ class TTSPipeline:
             print(f"TTS处理过程中发生错误: {str(e)}")
             print(f"文本为: {text}")
             return None
+
+    async def temporary_send_method(
+        self, message: MessageBase, text_list: List[str], group_id: str
+    ) -> None:
+        """临时使用的原样发送函数"""
+        for text in text_list:
+            new_seg = Seg(type="text", data=text)
+            message.message_segment = new_seg
+            await self.server.send_message(message)
+        await self.cleanup_task(group_id)
 
     async def send_voice_stream(self, message: MessageBase) -> None:
         """流式发送语音消息"""

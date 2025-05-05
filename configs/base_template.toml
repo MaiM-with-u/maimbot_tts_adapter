@@ -15,6 +15,9 @@ default_preset = "default"  # 默认使用的预设名称
 qq = "default"       # QQ平台使用default预设
 # nonebot-qq = "default"
 
+[probability]
+voice_probability = 0.2 # 使用语音的概率
+
 [tts]
 # GPT-SoVITS API 配置
 host = "127.0.0.1"

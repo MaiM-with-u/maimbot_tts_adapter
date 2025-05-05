@@ -85,11 +85,23 @@ class PipelineConfig:
 
 
 @dataclass
+class ProbabilityConfig:
+    voice_probability: float
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ProbabilityConfig":
+        return cls(
+            voice_probability=data.get("voice_probability"),
+        )
+
+
+@dataclass
 class BaseConfig:
     tts: TTSConfig
     server: ServerConfig
     routes: Dict[str, str]
     pipeline: PipelineConfig
+    probability: ProbabilityConfig
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "BaseConfig":
@@ -98,6 +110,7 @@ class BaseConfig:
             server=ServerConfig(**data["server"]),
             routes=data["routes"],
             pipeline=PipelineConfig.from_dict(data.get("pipeline", {})),
+            probability=ProbabilityConfig.from_dict(data.get("probability", {})),
         )
 
 
@@ -131,6 +144,10 @@ class Config:
     @property
     def pipeline(self) -> PipelineConfig:
         return self.base_config.pipeline
+    
+    @property
+    def probability(self) -> ProbabilityConfig:
+        return self.base_config.probability
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
