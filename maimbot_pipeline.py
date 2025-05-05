@@ -12,7 +12,7 @@ import base64
 import io
 import wave
 import asyncio
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 
 class TTSPipeline:
@@ -52,6 +52,11 @@ class TTSPipeline:
 
         # 加载默认预设
         self.tts_model.load_preset(self.config.pipeline.default_preset)
+
+        # 按群/用户分组的文本缓冲队列和处理任务
+        self.text_buffer_dict: Dict[str, asyncio.Queue] = {}
+        self.buffer_task_dict: Dict[str, asyncio.Task] = {}
+        self.buffer_timeout = 2.0 # 默认2秒
 
     def start(self):
         """启动服务器和路由"""
@@ -136,10 +141,8 @@ class TTSPipeline:
         return message_text, have_text, have_other
 
     async def client_handle(self, message_dict: dict) -> None:
-        """处理客户端收到的消息并进行TTS转换"""
-        # print(f"Received message from client: {message_dict}")
+        """处理客户端收到的消息并进行TTS转换（分群缓冲）"""
         message = MessageBase.from_dict(message_dict)
-
         streaming_mode = (
             self.config.tts.streaming_mode
             if hasattr(self.config.tts, "streaming_mode")
@@ -148,49 +151,103 @@ class TTSPipeline:
         if streaming_mode:
             await self.send_voice_stream(message)
             return
-        # if (
-        #     not message.message_info.additional_config
-        #     or not message.message_info.additional_config.get("allow_tts", False)
-        # ):
-        #     print("跳过TTS处理")
-        #     return
 
-        # 前置以减少切换预设的次数
         message_text, have_text, have_other = self.process_seg(message.message_segment)
         if have_other and not have_text:
-            # 直接透传
             await self.server.send_message(message)
             return
         elif have_other and have_text:
-            # 声明丢弃了其他类型的消息
             print("检测到混合类型消息，丢弃其他类型")
 
-        if message_text is None:
+        if not message_text:
             print("处理文本为空，跳过发送")
             return
 
-        # 根据平台切换预设
-        platform = message.message_info.platform
-        preset_name = self.get_platform_preset(platform)
-        if self.tts_model._current_preset != preset_name:
-            self.tts_model.load_preset(preset_name)
-
-        text = ",".join(message_text)
-        print("处理文本:", text)
-
-        new_seg = await self.get_voice_no_stream(text)
-        if not new_seg:
-            print("语音消息为空，跳过发送")
+        # 获取分组ID（优先群id，否则用户id）
+        group_id = getattr(message.message_info.group_info, "group_id", None)
+        if group_id is None:
+            print("没有群消息id使用用户id代替")
+            group_id = getattr(message.message_info.user_info, "user_id", None)
+        if not group_id:
+            print("无法定位目标发送位置，跳过TTs处理")
+            await self.server.send_message(message)
             return
+        group_id = str(group_id)
 
-        message.message_segment = new_seg
-        message.message_info.format_info.content_format = ["voice"]
-        if not message.message_info.additional_config:
-            message.message_info.additional_config = {}
-        message.message_info.additional_config["original_text"] = text
+        # 创建队列和处理任务
+        if group_id not in self.text_buffer_dict:
+            self.text_buffer_dict[group_id] = asyncio.Queue()
+            self.buffer_task_dict[group_id] = asyncio.create_task(
+                self._buffer_queue_handler(group_id)
+            )
+        # 将文本加入队列
+        await self.text_buffer_dict[group_id].put((message_text, message))
 
-        await self.server.send_message(message)
-        return
+    async def _buffer_queue_handler(self, group_id: str):
+        """处理每个群/用户的缓冲队列，定时合成语音并发送"""
+        buffer: List[str] = []
+        last_message_obj = None
+        timer = None
+        while True:
+            try:
+                if not buffer:
+                    # 没有内容时无限等待
+                    message_text, message = await self.text_buffer_dict[group_id].get()
+                    buffer.extend(message_text)
+                    last_message_obj = message
+                    # 启动定时器
+                    timer = asyncio.create_task(asyncio.sleep(self.buffer_timeout))
+                else:
+                    # 有内容时，等待新消息或超时
+                    done, pending = await asyncio.wait(
+                        [
+                            asyncio.create_task(self.text_buffer_dict[group_id].get()),
+                            timer
+                        ],
+                        return_when=asyncio.FIRST_COMPLETED
+                    )
+                    if timer in done:
+                        # 超时，合成并发送
+                        text = ",".join(buffer)
+                        print(f"[{group_id}]缓冲区合成文本:", text)
+                        message = last_message_obj
+                        platform = message.message_info.platform
+                        preset_name = self.get_platform_preset(platform)
+                        if self.tts_model._current_preset != preset_name:
+                            self.tts_model.load_preset(preset_name)
+                        new_seg = await self.get_voice_no_stream(text)
+                        if not new_seg:
+                            print("语音消息为空，跳过发送")
+                            buffer.clear()
+                            continue
+                        message.message_segment = new_seg
+                        message.message_info.format_info.content_format = ["voice"]
+                        if not message.message_info.additional_config:
+                            message.message_info.additional_config = {}
+                        message.message_info.additional_config["original_text"] = text
+                        await self.server.send_message(message)
+                        buffer.clear()
+                        last_message_obj = None
+                        timer = None
+                        # 清理未完成的 get 任务
+                        for task in pending:
+                            task.cancel()
+                    else:
+                        # 收到新消息，加入缓冲
+                        for task in done:
+                            if not task.cancelled():
+                                message_text, message = task.result()
+                                buffer.extend(message_text)
+                                last_message_obj = message
+                        # 重置定时器
+                        if timer:
+                            timer.cancel()
+                        timer = asyncio.create_task(asyncio.sleep(self.buffer_timeout))
+            except Exception as e:
+                print(f"分组缓冲处理异常: {e}")
+                buffer.clear()
+                last_message_obj = None
+                timer = None
 
     async def get_voice_no_stream(self, text: str):
         try:
