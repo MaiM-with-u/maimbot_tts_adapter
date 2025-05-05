@@ -154,6 +154,7 @@ class TTSPipeline:
 
         message_text, have_text, have_other = self.process_seg(message.message_segment)
         if have_other and not have_text:
+            # 非文本消息直接透传
             await self.server.send_message(message)
             return
         elif have_other and have_text:
@@ -169,7 +170,7 @@ class TTSPipeline:
             print("没有群消息id使用用户id代替")
             group_id = getattr(message.message_info.user_info, "user_id", None)
         if not group_id:
-            print("无法定位目标发送位置，跳过TTs处理")
+            print("无法定位目标发送位置，跳过TTS处理")
             await self.server.send_message(message)
             return
         group_id = str(group_id)
