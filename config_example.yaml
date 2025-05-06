@@ -1,0 +1,37 @@
+server:
+  host: 0.0.0.0
+  port: 8080
+
+tts:
+  host: 127.0.0.1
+  port: 8000
+  ref_audio_path: ""  # 参考音频路径，可选
+  prompt_text: ""     # 参考音频对应的文本，可选
+  streaming_mode: false  # 是否使用流式合成
+
+# 大模型TTS配置
+omni_tts:
+  enabled: false  # 是否启用大模型TTS
+  api_key: "YOUR_DASHSCOPE_API_KEY"  # 阿里云百炼API Key
+  model_name: "qwen-omni-turbo"  # 模型名称
+  voice: "Chelsie"  # 语音音色
+  format: "wav"    # 音频格式
+  # 音频后处理配置
+  post_processing:
+    enabled: false      # 是否启用音频后处理
+    volume_reduction: 3.0  # 音量降低程度(dB)
+    noise_level: 0.1    # 杂音强度，0-1之间的浮点数
+
+pipeline:
+  default_preset: "default"  # 默认预设名称
+  platform_presets:  # 平台特定预设
+    qq: "default"
+    discord: "default"
+  keep_original_tts: true  # 保留原始TTS支持
+
+routes:  # 路由配置
+  qq: "http://localhost:5700/send_msg"
+  discord: "http://localhost:5701/api/v1/send"
+
+probability:
+  voice_probability: 1.0  # 转为语音的概率，1.0表示100% 

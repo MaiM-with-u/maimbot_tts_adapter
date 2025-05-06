@@ -8,12 +8,15 @@ from maim_message import (
 )
 from utils.config import get_default_config, Config
 from tts_model import TTSModel
+# 导入大模型音频生成模块
+from omni_tts import OmniTTS
 import base64
 import io
 import wave
 import asyncio
 from typing import List, Tuple, Dict
 import random
+import os
 
 
 class TTSPipeline:
@@ -23,18 +26,63 @@ class TTSPipeline:
             self.config: Config = Config(config_path)
         else:
             self.config: Config = get_default_config()
+            
+        # 检查是否启用大模型TTS
+        self.use_omni_tts = hasattr(self.config, "omni_tts") and self.config.omni_tts.enabled
+        
+        # 初始化大模型TTS API
+        self.omni_tts = None
+        if self.use_omni_tts:
+            api_key = self.config.omni_tts.api_key or os.environ.get("DASHSCOPE_API_KEY")
+            if not api_key:
+                print("警告: 未找到大模型API密钥，请在配置中设置api_key或设置环境变量DASHSCOPE_API_KEY")
+            else:
+                # 获取后处理配置
+                enable_post_processing = False
+                volume_reduction_db = 0
+                noise_level = 0
+                
+                if hasattr(self.config.omni_tts, "post_processing"):
+                    enable_post_processing = getattr(self.config.omni_tts.post_processing, "enabled", False)
+                    volume_reduction_db = getattr(self.config.omni_tts.post_processing, "volume_reduction", 0)
+                    noise_level = getattr(self.config.omni_tts.post_processing, "noise_level", 0)
+                
+                self.omni_tts = OmniTTS(
+                    api_key=api_key, 
+                    model_name=self.config.omni_tts.model_name,
+                    voice=self.config.omni_tts.voice,
+                    format=self.config.omni_tts.format,
+                    enable_post_processing=enable_post_processing,
+                    volume_reduction_db=volume_reduction_db,
+                    noise_level=noise_level
+                )
+                print(f"已初始化大模型TTS: {self.config.omni_tts.model_name}")
+                if enable_post_processing:
+                    print(f"已启用音频后处理: 音量-{volume_reduction_db}dB, 杂音强度{noise_level*100:.1f}%")
 
-        # 初始化TTS模型
-        self.tts_model = TTSModel(
-            config=self.config, host=self.config.tts.host, port=self.config.tts.port
-        )
-
-        # 设置默认参考音频
-        if self.config.tts.ref_audio_path and self.config.tts.prompt_text:
-            self.tts_model.set_refer_audio(
-                audio_path=self.config.tts.ref_audio_path,
-                prompt_text=self.config.tts.prompt_text,
-            )
+        # 初始化TTS模型 (仅在不使用大模型或需要同时支持两种方式时)
+        self.tts_model = None
+        if not self.use_omni_tts or self.config.pipeline.keep_original_tts:
+            try:
+                self.tts_model = TTSModel(
+                    config=self.config, host=self.config.tts.host, port=self.config.tts.port
+                )
+                
+                # 设置默认参考音频
+                if self.config.tts.ref_audio_path and self.config.tts.prompt_text:
+                    self.tts_model.set_refer_audio(
+                        audio_path=self.config.tts.ref_audio_path,
+                        prompt_text=self.config.tts.prompt_text,
+                    )
+                    
+                # 加载默认预设
+                self.tts_model.load_preset(self.config.pipeline.default_preset)
+                print("已初始化原始TTS模型")
+            except Exception as e:
+                print(f"初始化原始TTS模型失败: {str(e)}")
+                if not self.use_omni_tts:
+                    print("警告: 原始TTS模型初始化失败且未启用大模型TTS，语音合成功能将不可用")
+                self.tts_model = None
 
         # 初始化服务器
         self.server = MessageServer(
@@ -50,9 +98,6 @@ class TTSPipeline:
 
         self.server.register_message_handler(self.server_handle)
         self.router.register_class_handler(self.client_handle)
-
-        # 加载默认预设
-        self.tts_model.load_preset(self.config.pipeline.default_preset)
 
         # 按群/用户分组的文本缓冲队列和处理任务
         self.text_buffer_dict: Dict[str, asyncio.Queue[Tuple[str, MessageBase]]] = {}
@@ -149,6 +194,13 @@ class TTSPipeline:
             if hasattr(self.config.tts, "streaming_mode")
             else False
         )
+        
+        # 检查是否有可用的TTS模型
+        if not self.omni_tts and not self.tts_model:
+            print("警告: 没有可用的TTS模型，跳过语音处理")
+            await self.server.send_message(message)
+            return
+            
         if streaming_mode:
             await self.send_voice_stream(message)
             return
@@ -215,19 +267,39 @@ class TTSPipeline:
         message = latest_message_obj
         platform = message.message_info.platform
         preset_name = self.get_platform_preset(platform)
-        if self.tts_model._current_preset != preset_name:
-            self.tts_model.load_preset(preset_name)
-        new_seg = await self.get_voice_no_stream(text)
-        if not new_seg:
-            print("语音消息为空，跳过发送")
-            await self.cleanup_task(group_id)
-            return
-        message.message_segment = new_seg
-        message.message_info.format_info.content_format = ["voice"]
-        if not message.message_info.additional_config:
-            message.message_info.additional_config = {}
-        message.message_info.additional_config["original_text"] = text
-        await self.server.send_message(message)
+        
+        # 尝试加载预设
+        try:
+            if self.tts_model and self.tts_model._current_preset != preset_name:
+                self.tts_model.load_preset(preset_name)
+        except Exception as e:
+            print(f"加载预设失败: {e}")
+            
+        # 尝试生成语音
+        try:
+            print("开始生成语音...")
+            new_seg = await self.get_voice_no_stream(text)
+            if not new_seg:
+                print("语音消息为空，跳过发送")
+                await self.cleanup_task(group_id)
+                return
+            print("语音生成成功，准备发送")
+            message.message_segment = new_seg
+            message.message_info.format_info.content_format = ["voice"]
+            if not message.message_info.additional_config:
+                message.message_info.additional_config = {}
+            message.message_info.additional_config["original_text"] = text
+            print("正在发送语音消息...")
+            await self.server.send_message(message)
+            print("语音消息发送完成")
+        except Exception as e:
+            import traceback
+            print(f"语音生成或发送过程中发生错误: {str(e)}")
+            print(f"详细错误信息: {traceback.format_exc()}")
+            # 如果语音生成失败，尝试发送原文本
+            print("尝试发送原文本作为备选...")
+            await self.temporary_send_method(latest_message_obj, buffer, group_id)
+        
         await self.cleanup_task(group_id)
         return
 
@@ -237,8 +309,16 @@ class TTSPipeline:
 
     async def get_voice_no_stream(self, text: str):
         try:
-            # 使用非流式TTS
-            audio_data = self.tts_model.tts(text=text)
+            # 使用大模型生成音频
+            if self.use_omni_tts and self.omni_tts:
+                audio_data = await self.omni_tts.generate_audio(text)
+            elif self.tts_model:
+                # 使用非流式TTS
+                audio_data = self.tts_model.tts(text=text)
+            else:
+                print("错误: 没有可用的TTS模型")
+                return None
+                
             # 对整个音频数据进行base64编码
             encoded_audio = self.encode_audio(audio_data)
             # 创建语音消息
@@ -264,16 +344,25 @@ class TTSPipeline:
         # 根据平台切换预设
         platform = message.message_info.platform
         preset_name = self.get_platform_preset(platform)
-        if self.tts_model._current_preset != preset_name:
+        if self.tts_model and self.tts_model._current_preset != preset_name:
             self.tts_model.load_preset(preset_name)
 
-        message_text = self.process_seg(message.message_segment)
+        message_text, have_text, have_other = self.process_seg(message.message_segment)
         if not message_text:
             print("处理文本为空，跳过发送")
             return
         text = ",".join(message_text)
         try:
-            audio_stream = self.tts_model.tts_stream(text=text)
+            # 使用大模型流式生成
+            if self.use_omni_tts and self.omni_tts:
+                audio_stream = await self.omni_tts.generate_audio_stream(text)
+            elif self.tts_model:
+                # 使用原TTS模型
+                audio_stream = self.tts_model.tts_stream(text=text)
+            else:
+                print("错误: 没有可用的TTS模型")
+                return
+                
             # 从音频流中读取和处理数据
             for chunk in audio_stream:
                 if chunk:  # 确保chunk不为空

@@ -1,6 +1,26 @@
+# 基本依赖
+asyncio
+typing
+base64
+io
+wave
+random
+json
+
+# 网络和HTTP请求
+aiohttp>=3.8.0
+
+# 可选依赖 - 用于OpenAI客户端集成
+openai>=1.0.0  # 可选，如果安装则使用OpenAI客户端
+
+# 其他可能需要的依赖
+pyyaml>=6.0  # 用于配置文件解析
+
 requests>=2.31.0
 toml>=0.10.2
-numpy
+numpy>=1.24.0
 soundfile>=0.12.1
-wave>=0.0.2
 base64io>=1.0.3
+
+# 音频处理 - 用于后处理功能
+pydub>=0.25.1  # 音频处理库，用于音量调整和添加杂音
