@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import toml
 from pathlib import Path
 
@@ -29,6 +29,26 @@ class TTSModels:
             gpt_model=data.get("gpt_model", ""),
             sovits_model=data.get("sovits_model", ""),
             presets=presets,
+        )
+
+
+@dataclass
+class OmniTTSConfig:
+    """大模型TTS配置"""
+    enabled: bool
+    api_key: str
+    model_name: str
+    voice: str
+    format: str
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "OmniTTSConfig":
+        return cls(
+            enabled=data.get("enabled", False),
+            api_key=data.get("api_key", ""),
+            model_name=data.get("model_name", "qwen-omni-turbo"),
+            voice=data.get("voice", "Chelsie"),
+            format=data.get("format", "wav"),
         )
 
 
@@ -75,12 +95,14 @@ class ServerConfig:
 class PipelineConfig:
     default_preset: str
     platform_presets: Dict[str, str]
+    keep_original_tts: bool = False
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PipelineConfig":
         return cls(
             default_preset=data.get("default_preset", "default"),
             platform_presets=data.get("platform_presets", {}),
+            keep_original_tts=data.get("keep_original_tts", False),
         )
 
 
@@ -102,15 +124,18 @@ class BaseConfig:
     routes: Dict[str, str]
     pipeline: PipelineConfig
     probability: ProbabilityConfig
+    omni_tts: Optional[OmniTTSConfig] = None
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "BaseConfig":
+        omni_tts_data = data.get("omni_tts")
         return cls(
             tts=TTSConfig.from_dict(data["tts"]),
             server=ServerConfig(**data["server"]),
             routes=data["routes"],
             pipeline=PipelineConfig.from_dict(data.get("pipeline", {})),
             probability=ProbabilityConfig.from_dict(data.get("probability", {})),
+            omni_tts=OmniTTSConfig.from_dict(omni_tts_data) if omni_tts_data else None,
         )
 
 
@@ -148,6 +173,10 @@ class Config:
     @property
     def probability(self) -> ProbabilityConfig:
         return self.base_config.probability
+        
+    @property
+    def omni_tts(self) -> Optional[OmniTTSConfig]:
+        return self.base_config.omni_tts
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
