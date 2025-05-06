@@ -432,7 +432,7 @@ class OmniTTS:
 async def test_omni_tts():
     """测试函数"""
     # 设置API Key
-    api_key = "sk-5201c1e556c84c7286b8d91ec927903a"
+    api_key = ""
     if not api_key:
         print("请设置有效的API密钥")
         return
