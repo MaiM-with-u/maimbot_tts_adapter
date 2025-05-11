@@ -11,7 +11,6 @@ class BaseTTSModel(ABC):
             config (dict): 插件配置
         """
         self.config = self.load_config()
-        pass
 
     @abstractmethod
     def load_config(self):
@@ -37,14 +36,12 @@ class BaseTTSModel(ABC):
         pass
 
     @abstractmethod
-    async def tts_stream(self, text: str, **kwargs):
+    def tts_stream(self, text: str, **kwargs):
         """
         流式方式获取语音内容
 
         Args:
             text (str): 需要合成的语音内容
             **kwargs: 其他参数
-        Returns:
-            data (bytes): （分块的）bytes格式的wav音频内容
         """
         pass

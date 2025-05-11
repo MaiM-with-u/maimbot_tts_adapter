@@ -186,7 +186,7 @@ class TTSPipeline:
         tts_class = self.tts_list[0]
         try:
             # 使用非流式TTS
-            audio_data = tts_class.tts(text=text, platform=platform)
+            audio_data = await tts_class.tts(text=text, platform=platform)
             # 对整个音频数据进行base64编码
             encoded_audio = encode_audio(audio_data)
             # 创建语音消息

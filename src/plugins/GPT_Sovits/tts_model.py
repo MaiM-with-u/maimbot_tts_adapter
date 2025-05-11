@@ -1,4 +1,6 @@
 import requests
+import aiohttp
+import asyncio
 from typing import Dict, Any, List
 from pathlib import Path
 from src.plugins.base_tts_model import BaseTTSModel
@@ -273,7 +275,7 @@ class TTSModel(BaseTTSModel):
 
         return params
 
-    def tts(
+    async def tts(
         self,
         text: str,
         ref_audio_path: str = None,
@@ -345,10 +347,12 @@ class TTSModel(BaseTTSModel):
             sample_steps=sample_steps,
             super_sampling=super_sampling,
         )
-        response = requests.get(f"{self.base_url}/tts", params=params, timeout=60)
-        if response.status_code != 200:
-            raise Exception(response.json()["message"])
-        return response.content
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{self.base_url}/tts", params=params, timeout=60
+            ) as response:  # noqa
+                response.raise_for_status()
+                return await response.read()
 
     def tts_stream(
         self,
@@ -406,6 +410,14 @@ class TTSModel(BaseTTSModel):
             super_sampling=super_sampling,
         )
 
+        # async with aiohttp.ClientSession() as session:
+        #     async with session.get(f"{self.base_url}/tts", params=params, timeout=aiohttp.ClientTimeout(connect=3.05, sock_read=None)) as response:
+        #         if response.status != 200:
+        #             raise Exception(await response.json().get("message", "未知错误"))
+
+        #         # 使用更小的块大小来提高流式传输的响应性
+        #         async for chunk in response.content.iter_any(4096):
+        #             yield chunk
         # 使用自定义超时，并设置较小的块大小来保持流式传输的响应性
         response = requests.get(
             f"{self.base_url}/tts",
