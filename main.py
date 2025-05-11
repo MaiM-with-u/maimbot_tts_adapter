@@ -6,39 +6,24 @@ from maim_message import (
     MessageBase,
     Seg,
 )
-from utils.config import get_default_config, Config
-from tts_model import TTSModel
-import base64
-import io
-import wave
+from src.config import Config
+from src.plugins.base_tts_model import BaseTTSModel
+from src.utils.audio_encode import encode_audio, encode_audio_stream
 import asyncio
 from typing import List, Tuple, Dict
 import random
+import importlib
+from pathlib import Path
 
 
 class TTSPipeline:
-    def __init__(self, config_path: str = None):
-        # 加载配置
-        if config_path:
-            self.config: Config = Config(config_path)
-        else:
-            self.config: Config = get_default_config()
+    tts_list: List[BaseTTSModel] = []
 
-        # 初始化TTS模型
-        self.tts_model = TTSModel(
-            config=self.config, host=self.config.tts.host, port=self.config.tts.port
-        )
-
-        # 设置默认参考音频
-        if self.config.tts.ref_audio_path and self.config.tts.prompt_text:
-            self.tts_model.set_refer_audio(
-                audio_path=self.config.tts.ref_audio_path,
-                prompt_text=self.config.tts.prompt_text,
-            )
-
-        # 初始化服务器
+    def __init__(self, config_path: str):
+        self.config: Config = Config(config_path)
         self.server = MessageServer(
-            host=self.config.server.host, port=self.config.server.port
+            host=self.config.server.host,
+            port=self.config.server.port,
         )
 
         # 设置路由
@@ -51,77 +36,42 @@ class TTSPipeline:
         self.server.register_message_handler(self.server_handle)
         self.router.register_class_handler(self.client_handle)
 
-        # 加载默认预设
-        self.tts_model.load_preset(self.config.pipeline.default_preset)
-
         # 按群/用户分组的文本缓冲队列和处理任务
         self.text_buffer_dict: Dict[str, asyncio.Queue[Tuple[str, MessageBase]]] = {}
         self.buffer_task_dict: Dict[str, asyncio.Task] = {}
         self.buffer_timeout: int = 2  # 默认2秒
 
+    def import_module(self):
+        """动态导入TTS适配"""
+        for tts in self.config.enabled_plugin.enabled:
+            # 动态导入模块
+            module_name = f"src.plugins.{tts}"
+            try:
+                module = importlib.import_module(module_name)
+                tts_class: BaseTTSModel = module.TTSModel()
+                self.tts_list.append(tts_class)
+            except ImportError as e:
+                print(f"Error importing {module_name}: {e}")
+                raise
+            except AttributeError as e:
+                print(f"Error accessing TTSModel in {module_name}: {e}")
+                raise
+            except Exception as e:
+                print(f"Unexpected error importing {module_name}: {e}")
+                raise
+
     def start(self):
-        """启动服务器和路由"""
+        """启动服务器和路由，并导入设定的模块"""
+        self.import_module()
         return asyncio.gather(
             self.server.run(),
             self.router.run(),
         )
 
-    def get_platform_preset(self, platform: str) -> str:
-        """获取平台对应的预设名称
-
-        Args:
-            platform: 平台名称
-
-        Returns:
-            预设名称，如果平台没有指定预设则返回默认预设
-        """
-        return self.config.pipeline.platform_presets.get(
-            platform, self.config.pipeline.default_preset
-        )
-
-    def encode_audio(self, audio_data: bytes, media_type: str = "wav") -> str:
-        """对音频数据进行base64编码
-
-        Args:
-            audio_data: 原始音频数据
-            media_type: 音频格式，默认为wav
-
-        Returns:
-            base64编码后的音频数据
-        """
-        # 确保音频是wav格式
-        if media_type != "wav":
-            # 先将音频数据转换为wav格式
-            with io.BytesIO(audio_data) as audio_io:
-                with wave.open(audio_io, "rb") as wav_file:
-                    # 获取音频参数
-                    channels = wav_file.getnchannels()
-                    width = wav_file.getsampwidth()
-                    framerate = wav_file.getframerate()
-                    frames = wav_file.readframes(wav_file.getnframes())
-
-                    # 创建新的wav文件
-                    with io.BytesIO() as wav_io:
-                        with wave.open(wav_io, "wb") as new_wav:
-                            new_wav.setnchannels(channels)
-                            new_wav.setsampwidth(width)
-                            new_wav.setframerate(framerate)
-                            new_wav.writeframes(frames)
-                        audio_data = wav_io.getvalue()
-
-        # base64编码
-        return base64.b64encode(audio_data).decode("utf-8")
-
-    def encode_audio_stream(self, audio_chunk: bytes) -> str:
-        """对音频数据块进行base64编码
-
-        Args:
-            audio_chunk: 音频数据块
-
-        Returns:
-            base64编码后的数据
-        """
-        return base64.b64encode(audio_chunk).decode("utf-8")
+    async def server_handle(self, message_data: dict):
+        """处理服务器收到的消息"""
+        message = MessageBase.from_dict(message_data)
+        await self.router.send_message(message)
 
     def process_seg(self, seg: Seg) -> Tuple[List[str], bool, bool]:
         have_text = False
@@ -144,15 +94,11 @@ class TTSPipeline:
     async def client_handle(self, message_dict: dict) -> None:
         """处理客户端收到的消息并进行TTS转换（分群缓冲）"""
         message = MessageBase.from_dict(message_dict)
-        streaming_mode = (
-            self.config.tts.streaming_mode
-            if hasattr(self.config.tts, "streaming_mode")
-            else False
-        )
-        if streaming_mode:
+        stream_mode = self.config.tts_base_config.stream_mode
+        if stream_mode:
             await self.send_voice_stream(message)
             return
-
+        
         message_text, have_text, have_other = self.process_seg(message.message_segment)
         if have_other and not have_text:
             # 非文本消息直接透传
@@ -160,11 +106,11 @@ class TTSPipeline:
             return
         elif have_other and have_text:
             print("检测到混合类型消息，丢弃其他类型")
-
+        
         if not message_text:
             print("处理文本为空，跳过发送")
             return
-
+        
         # 获取分组ID（优先群id，否则用户id）
         group_id = getattr(message.message_info.group_info, "group_id", None)
         if group_id is None:
@@ -175,7 +121,7 @@ class TTSPipeline:
             await self.server.send_message(message)
             return
         group_id = str(group_id)
-
+        
         # 保证队列存在
         if group_id not in self.text_buffer_dict:
             self.text_buffer_dict[group_id] = asyncio.Queue()
@@ -186,7 +132,7 @@ class TTSPipeline:
             )
         # 将文本加入队列
         await self.text_buffer_dict[group_id].put((message_text, message))
-
+    
     async def _buffer_queue_handler(self, group_id: str) -> None:
         """处理每个群/用户的缓冲队列，定时合成语音并发送"""
         buffer: List[str] = []
@@ -213,11 +159,7 @@ class TTSPipeline:
         text: str = ",".join(buffer)
         print(f"[聊天: {group_id}]缓冲区合成文本:", text)
         message = latest_message_obj
-        platform = message.message_info.platform
-        preset_name = self.get_platform_preset(platform)
-        if self.tts_model._current_preset != preset_name:
-            self.tts_model.load_preset(preset_name)
-        new_seg = await self.get_voice_no_stream(text)
+        new_seg = await self.get_voice_no_stream(text, message.message_info.platform)
         if not new_seg:
             print("语音消息为空，跳过发送")
             await self.cleanup_task(group_id)
@@ -230,17 +172,23 @@ class TTSPipeline:
         await self.server.send_message(message)
         await self.cleanup_task(group_id)
         return
-
+    
     async def cleanup_task(self, group_id: str):
         task = self.buffer_task_dict.pop(group_id, "没有对应的键")
         task.cancel()
-
-    async def get_voice_no_stream(self, text: str):
+    
+    async def get_voice_no_stream(self, text: str, platform: str) -> Seg:
+        """获取语音消息段"""
+        if not self.tts_list:
+            print("没有启用任何tts，跳过处理")
+            return None
+        # tts_class = random.choice(self.tts_list)
+        tts_class = self.tts_list[0]
         try:
             # 使用非流式TTS
-            audio_data = self.tts_model.tts(text=text)
+            audio_data = tts_class.tts(text=text, platform=platform)
             # 对整个音频数据进行base64编码
-            encoded_audio = self.encode_audio(audio_data)
+            encoded_audio = encode_audio(audio_data)
             # 创建语音消息
             new_seg = Seg(type="voice", data=encoded_audio)
             return new_seg
@@ -248,7 +196,7 @@ class TTSPipeline:
             print(f"TTS处理过程中发生错误: {str(e)}")
             print(f"文本为: {text}")
             return None
-
+    
     async def temporary_send_method(
         self, message: MessageBase, text_list: List[str], group_id: str
     ) -> None:
@@ -257,30 +205,30 @@ class TTSPipeline:
             new_seg = Seg(type="text", data=text)
             message.message_segment = new_seg
             await self.server.send_message(message)
+            await asyncio.sleep(1)
         await self.cleanup_task(group_id)
-
+    
     async def send_voice_stream(self, message: MessageBase) -> None:
         """流式发送语音消息"""
-        # 根据平台切换预设
         platform = message.message_info.platform
-        preset_name = self.get_platform_preset(platform)
-        if self.tts_model._current_preset != preset_name:
-            self.tts_model.load_preset(preset_name)
-
         message_text = self.process_seg(message.message_segment)
         if not message_text:
             print("处理文本为空，跳过发送")
             return
         text = ",".join(message_text)
+        if not self.tts_list:
+            print("没有启用任何tts，跳过处理")
+            return None
+        # tts_class = random.choice(self.tts_list)
+        tts_class = self.tts_list[0]
         try:
-            audio_stream = self.tts_model.tts_stream(text=text)
+            audio_stream = tts_class.tts_stream(text=text, platform=platform)
             # 从音频流中读取和处理数据
             for chunk in audio_stream:
                 if chunk:  # 确保chunk不为空
                     try:
                         # 对音频数据进行base64编码
-                        encoded_chunk = self.encode_audio_stream(chunk)
-
+                        encoded_chunk = encode_audio_stream(chunk)
                         # 创建语音消息
                         new_seg = Seg(type="voice", data=encoded_chunk)
                         message.message_segment = new_seg
@@ -288,7 +236,7 @@ class TTSPipeline:
                         if not message.message_info.additional_config:
                             message.message_info.additional_config = {}
                         message.message_info.additional_config["original_text"] = text
-
+                        
                         # 发送到下游
                         await self.server.send_message(message)
                     except Exception as e:
@@ -300,15 +248,10 @@ class TTSPipeline:
             print(f"文本为: {text}")
             return None
 
-    async def server_handle(self, message_data: dict):
-        """处理服务器收到的消息"""
-        message = MessageBase.from_dict(message_data)
-        # print(f"Received message from server: {message_data}")
-        await self.router.send_message(message)
-
 
 if __name__ == "__main__":
-    pipeline = TTSPipeline()
+    config_path = Path(__file__).parent / "configs"/ "base.toml"
+    pipeline = TTSPipeline(config_path)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(pipeline.start())

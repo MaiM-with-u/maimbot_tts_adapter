@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Dict, Any, List
 import toml
-from pathlib import Path
 
 
 @dataclass
@@ -34,7 +33,6 @@ class TTSModels:
 
 @dataclass
 class TTSConfig:
-    # api_url: str
     host: str
     port: int
     ref_audio_path: str
@@ -43,7 +41,6 @@ class TTSConfig:
     text_language: str
     prompt_language: str
     media_type: str
-    streaming_mode: bool
     top_k: int
     top_p: float
     temperature: float
@@ -66,12 +63,6 @@ class TTSConfig:
 
 
 @dataclass
-class ServerConfig:
-    host: str
-    port: int
-
-
-@dataclass
 class PipelineConfig:
     default_preset: str
     platform_presets: Dict[str, str]
@@ -83,42 +74,24 @@ class PipelineConfig:
             platform_presets=data.get("platform_presets", {}),
         )
 
-
 @dataclass
-class ProbabilityConfig:
-    voice_probability: float
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ProbabilityConfig":
-        return cls(
-            voice_probability=data.get("voice_probability"),
-        )
-
-
-@dataclass
-class BaseConfig:
+class TTSBaseConfigData:
     tts: TTSConfig
-    server: ServerConfig
-    routes: Dict[str, str]
     pipeline: PipelineConfig
-    probability: ProbabilityConfig
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "BaseConfig":
-        return cls(
-            tts=TTSConfig.from_dict(data["tts"]),
-            server=ServerConfig(**data["server"]),
-            routes=data["routes"],
-            pipeline=PipelineConfig.from_dict(data.get("pipeline", {})),
-            probability=ProbabilityConfig.from_dict(data.get("probability", {})),
-        )
+    def from_dict(cls, data: Dict[str, Any]) -> "TTSBaseConfig":
+        tts_config = TTSConfig.from_dict(data.get("tts", {}))
+        pipeline_config = PipelineConfig.from_dict(data.get("pipeline", {}))
+        return cls(tts=tts_config, pipeline=pipeline_config)
 
-
-class Config:
+class TTSBaseConfig:
     def __init__(self, config_path: str):
         self.config_path = config_path
-        self.config_data = load_config(config_path)
-        self.base_config = BaseConfig.from_dict(self.config_data)
+        self.config_data = load_base_config(config_path)
+        self.base_config = TTSBaseConfigData.from_dict(self.config_data)
+        self.tts: TTSConfig = self.base_config.tts
+        self.pipeline: PipelineConfig = self.base_config.pipeline
 
     def __getitem__(self, key: str) -> Any:
         return self.config_data[key]
@@ -129,42 +102,16 @@ class Config:
     def __repr__(self) -> str:
         return str(self.config_data)
 
-    @property
-    def tts(self) -> TTSConfig:
-        return self.base_config.tts
 
-    @property
-    def server(self) -> ServerConfig:
-        return self.base_config.server
-
-    @property
-    def routes(self) -> Dict[str, str]:
-        return self.base_config.routes
-
-    @property
-    def pipeline(self) -> PipelineConfig:
-        return self.base_config.pipeline
-    
-    @property
-    def probability(self) -> ProbabilityConfig:
-        return self.base_config.probability
-
-
-def load_config(config_path: str) -> Dict[str, Any]:
+def load_base_config(config_path: str) -> Dict[str, Any]:
     """加载TOML配置文件
 
     Args:
-        config_path: 配置文件路径
+        config_path (str): 配置文件路径
 
     Returns:
-        配置字典
+        config (Dict[str, Any]): 配置文件内容
     """
     with open(config_path, "r", encoding="utf-8") as f:
         config = toml.load(f)
     return config
-
-
-def get_default_config() -> Config:
-    """获取默认配置"""
-    config_path = Path(__file__).parent.parent / "configs" / "base.toml"
-    return Config(str(config_path))
