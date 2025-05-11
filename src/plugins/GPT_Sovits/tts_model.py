@@ -1,6 +1,5 @@
 import requests
 import aiohttp
-import asyncio
 from typing import Dict, Any, List
 from pathlib import Path
 from src.plugins.base_tts_model import BaseTTSModel
@@ -36,7 +35,7 @@ class TTSModel(BaseTTSModel):
         )
         if not config_path.exists():
             raise FileNotFoundError(f"配置文件不存在: {config_path}")
-        return TTSBaseConfig(config_path)
+        return TTSBaseConfig(str(config_path))
 
     def initialize(self) -> None:
         """初始化模型和预设
