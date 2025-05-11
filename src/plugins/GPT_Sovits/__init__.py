@@ -1,3 +1,3 @@
-from .tts_model import TTSModel 
+from .tts_model import TTSModel
 
 __all__ = ["TTSModel"]

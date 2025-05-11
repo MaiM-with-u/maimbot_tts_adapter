@@ -19,9 +19,11 @@ class ProbabilityConfig:
 class EnabledPluginClass:
     enabled: List[str]
 
+
 @dataclass
 class ttsClass:
     stream_mode: bool
+
 
 @dataclass
 class BaseConfig:
@@ -68,7 +70,7 @@ class Config:
     @property
     def probability(self) -> ProbabilityConfig:
         return self.base_config.probability
-    
+
     @property
     def enabled_plugin(self) -> EnabledPluginClass:
         return self.base_config.enabled_plugin

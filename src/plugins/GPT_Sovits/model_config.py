@@ -74,6 +74,7 @@ class PipelineConfig:
             platform_presets=data.get("platform_presets", {}),
         )
 
+
 @dataclass
 class TTSBaseConfigData:
     tts: TTSConfig
@@ -84,6 +85,7 @@ class TTSBaseConfigData:
         tts_config = TTSConfig.from_dict(data.get("tts", {}))
         pipeline_config = PipelineConfig.from_dict(data.get("pipeline", {}))
         return cls(tts=tts_config, pipeline=pipeline_config)
+
 
 class TTSBaseConfig:
     def __init__(self, config_path: str):

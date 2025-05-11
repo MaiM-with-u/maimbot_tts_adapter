@@ -98,7 +98,7 @@ class TTSPipeline:
         if stream_mode:
             await self.send_voice_stream(message)
             return
-        
+
         message_text, have_text, have_other = self.process_seg(message.message_segment)
         if have_other and not have_text:
             # 非文本消息直接透传
@@ -106,11 +106,11 @@ class TTSPipeline:
             return
         elif have_other and have_text:
             print("检测到混合类型消息，丢弃其他类型")
-        
+
         if not message_text:
             print("处理文本为空，跳过发送")
             return
-        
+
         # 获取分组ID（优先群id，否则用户id）
         group_id = getattr(message.message_info.group_info, "group_id", None)
         if group_id is None:
@@ -121,7 +121,7 @@ class TTSPipeline:
             await self.server.send_message(message)
             return
         group_id = str(group_id)
-        
+
         # 保证队列存在
         if group_id not in self.text_buffer_dict:
             self.text_buffer_dict[group_id] = asyncio.Queue()
@@ -132,7 +132,7 @@ class TTSPipeline:
             )
         # 将文本加入队列
         await self.text_buffer_dict[group_id].put((message_text, message))
-    
+
     async def _buffer_queue_handler(self, group_id: str) -> None:
         """处理每个群/用户的缓冲队列，定时合成语音并发送"""
         buffer: List[str] = []
@@ -172,11 +172,11 @@ class TTSPipeline:
         await self.server.send_message(message)
         await self.cleanup_task(group_id)
         return
-    
+
     async def cleanup_task(self, group_id: str):
         task = self.buffer_task_dict.pop(group_id, "没有对应的键")
         task.cancel()
-    
+
     async def get_voice_no_stream(self, text: str, platform: str) -> Seg:
         """获取语音消息段"""
         if not self.tts_list:
@@ -196,7 +196,7 @@ class TTSPipeline:
             print(f"TTS处理过程中发生错误: {str(e)}")
             print(f"文本为: {text}")
             return None
-    
+
     async def temporary_send_method(
         self, message: MessageBase, text_list: List[str], group_id: str
     ) -> None:
@@ -207,7 +207,7 @@ class TTSPipeline:
             await self.server.send_message(message)
             await asyncio.sleep(1)
         await self.cleanup_task(group_id)
-    
+
     async def send_voice_stream(self, message: MessageBase) -> None:
         """流式发送语音消息"""
         platform = message.message_info.platform
@@ -236,7 +236,7 @@ class TTSPipeline:
                         if not message.message_info.additional_config:
                             message.message_info.additional_config = {}
                         message.message_info.additional_config["original_text"] = text
-                        
+
                         # 发送到下游
                         await self.server.send_message(message)
                     except Exception as e:
@@ -250,7 +250,7 @@ class TTSPipeline:
 
 
 if __name__ == "__main__":
-    config_path = Path(__file__).parent / "configs"/ "base.toml"
+    config_path = Path(__file__).parent / "configs" / "base.toml"
     pipeline = TTSPipeline(config_path)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

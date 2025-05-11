@@ -126,7 +126,7 @@ class TTSModel(BaseTTSModel):
             print(f"平台 {platform} 没有指定预设，使用默认预设")
             return self.config.pipeline.default_preset
         return preset
-    
+
     def set_refer_audio(self, audio_path: str, prompt_text: str) -> None:
         """设置参考音频和对应的提示文本
 
@@ -292,7 +292,7 @@ class TTSModel(BaseTTSModel):
         repetition_penalty: float = None,
         sample_steps: int = None,
         super_sampling: bool = None,
-        **kwargs
+        **kwargs,
     ):
         """文本转语音
 
