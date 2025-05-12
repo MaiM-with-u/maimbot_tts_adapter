@@ -4,9 +4,10 @@
 
 ## 功能特性
 
+- 支持多种provider配置，可以动态启用不同的provider
 - 支持流式和非流式语音合成
 - 支持多平台预设配置
-- 基于 GPT-SoVITS 实现高质量语音合成
+- 基于 GPT-SoVITS 等provider实现高质量语音合成
 - 可配置的语音参数（语速、采样步数等）
 - 支持参考音频设置
 - 灵活的消息路由系统
@@ -26,7 +27,7 @@ cd maimbot_tts_adapter
 pip install -r requirements.txt
 ```
 
-3. 安装 GPT-SoVITS：
+3. 安装 GPT-SoVITS（或其他provider）：
 
 自行配置GPT-SoVITS，配置好相关环境后启动api：
 
@@ -36,11 +37,44 @@ pip install -r requirements.txt
 python api_v2.py 
 ```
 
-## 配置说明
+## 基本配置说明
 
-配置文件位于 `configs/base.toml`，主要包含以下配置项：
+配置文件位于 `configs/base.toml`，包含以下配置项：
 
-### TTS 配置
+### Server 配置
+这个配置标识的是给上游的Adapter（比如MaiBot-Napcat-Adapter）提供的服务端
+```toml
+[server]
+host = "127.0.0.1"
+port = 8070
+```
+### Route 配置
+这个配置标识的是给下游的MaiBot主体的连接
+```toml
+[routes]
+qq = "http://127.0.0.1:8090/ws" # 或者nonebot-qq
+# nonebot-qq = "default"
+```
+### Probability 配置
+这部分决定麦麦选取语音的概率
+```toml
+[probability]
+voice_probability = 0.2 # 使用语音的概率
+```
+### EnabledTTS 配置
+这部分标识的是选择启用的插件名称，其名称应该与插件的文件夹名称一至（即python模块名）
+```toml
+[enabled_tts] # 启用的TTS模块，请与各插件的目录名称一致
+enabled = ["GPT_Sovits"]
+```
+### TTSBaseConfig 配置
+这部分是TTS的通用配置，此处仅有是否使用流式传输的标识
+```toml
+[tts_base_config]
+stream_mode = false    # 是否启用流式输出
+```
+
+## 内置 GPT-SOVITS 插件 TTS 配置
 
 ```toml
 [tts]
@@ -50,7 +84,6 @@ ref_audio_path = "path/to/reference.wav"  # 参考音频路径
 prompt_text = "示例文本"                   # 参考文本
 text_language = "zh"                      # 文本语言
 prompt_language = "zh"                    # 提示语言
-streaming_mode = true                     # 是否启用流式合成
 # 其他 TTS 相关参数...
 
 [tts.models]
@@ -62,23 +95,7 @@ sovits_model = "path/to/sovits/model"    # SoVITS 模型路径
 name = "默认"
 ref_audio = "path/to/default/ref.wav"
 prompt_text = "默认提示文本"
-```
 
-### 服务器配置
-
-```toml
-[server]
-host = "0.0.0.0"
-port = 8080
-
-[routes]                                  # 消息路由配置
-platform1 = "http://example1.com"
-platform2 = "http://example2.com"
-```
-
-### 管道配置
-
-```toml
 [pipeline]
 default_preset = "default"                # 默认使用的预设名称
 
@@ -86,7 +103,6 @@ default_preset = "default"                # 默认使用的预设名称
 platform1 = "preset1"
 platform2 = "preset2"
 ```
-
 ## 使用方法
 
 1. 启动服务：
@@ -99,7 +115,7 @@ python maimbot_pipeline.py
 
 ## 注意事项
 
-- 确保已正确配置 GPT-SoVITS 模型路径
+- 确保已正确配置 GPT-SoVITS 模型路径等各项参数
 - 参考音频和提示文本对语音质量有重要影响
 - 流式模式适合长文本实时合成，非流式模式适合短文本高质量合成
 

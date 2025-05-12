@@ -1,6 +1,9 @@
 tts/
 __pycache__
-**/base.toml
 roadmap.txt
 *.wav
 .vscode
+*.toml
+!**_template.toml
+backup_files
+.ruff_cache
