@@ -150,6 +150,9 @@ class TTSPipeline:
             except TimeoutError: # 支持3.12及以上版本
                 print("等待结束，进入处理")
                 break
+            except Exception as e:
+                print(f"处理缓冲队列时发生错误: {str(e)}")
+                raise
         if not buffer or not latest_message_obj:
             print("数据为空，跳过处理")
             await self.cleanup_task(group_id)
