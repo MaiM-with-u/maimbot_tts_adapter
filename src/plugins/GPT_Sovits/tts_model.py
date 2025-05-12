@@ -265,13 +265,13 @@ class TTSModel(BaseTTSModel):
             "batch_size": batch_size,
             "batch_threshold": batch_threshold,
             "speed_factor": speed_factor,
-            "streaming_mode": streaming_mode,
+            "streaming_mode": str(streaming_mode) if streaming_mode is not None else None,
             "media_type": media_type,
             "repetition_penalty": repetition_penalty,
             "sample_steps": sample_steps,
-            "super_sampling": super_sampling,
+            "super_sampling": str(super_sampling) if super_sampling is not None else None,
         }
-
+        params = {k: v for k, v in params.items() if v is not None}
         return params
 
     async def tts(

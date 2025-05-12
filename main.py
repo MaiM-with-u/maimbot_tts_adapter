@@ -180,10 +180,10 @@ class TTSPipeline:
         return
 
     async def cleanup_task(self, group_id: str):
-        task = self.buffer_task_dict.pop(group_id, "没有对应的键")
+        task = self.buffer_task_dict.pop(group_id)
         task.cancel()
 
-    async def get_voice_no_stream(self, text: str, platform: str) -> Seg:
+    async def get_voice_no_stream(self, text: str, platform: str) -> Seg | None:
         """获取语音消息段"""
         if not self.tts_list:
             print("没有启用任何tts，跳过处理")
@@ -217,7 +217,7 @@ class TTSPipeline:
     async def send_voice_stream(self, message: MessageBase) -> None:
         """流式发送语音消息"""
         platform = message.message_info.platform
-        message_text = self.process_seg(message.message_segment)
+        message_text, have_text, have_other = self.process_seg(message.message_segment)
         if not message_text:
             print("处理文本为空，跳过发送")
             return
@@ -257,7 +257,7 @@ class TTSPipeline:
 
 if __name__ == "__main__":
     config_path = Path(__file__).parent / "configs" / "base.toml"
-    pipeline = TTSPipeline(config_path)
+    pipeline = TTSPipeline(str(config_path))
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(pipeline.start())
