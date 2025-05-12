@@ -144,7 +144,10 @@ class TTSPipeline:
                 )
                 buffer.extend(message_text)
                 latest_message_obj = message_obj
-            except asyncio.TimeoutError:
+            except asyncio.TimeoutError: # 向下兼容3.10与3.11
+                print("等待结束，进入处理")
+                break
+            except TimeoutError: # 支持3.12及以上版本
                 print("等待结束，进入处理")
                 break
         if not buffer or not latest_message_obj:
