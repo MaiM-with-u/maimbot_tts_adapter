@@ -37,7 +37,7 @@ def encode_audio(audio_data: bytes, media_type: str = "wav") -> str:
     return base64.b64encode(audio_data).decode("utf-8")
 
 
-def encode_audio_stream(audio_chunk: bytes) -> str:
+def encode_audio_stream(audio_chunk: bytes, media_type: str = "wav") -> str:
     """对音频数据块进行base64编码
 
     Args:

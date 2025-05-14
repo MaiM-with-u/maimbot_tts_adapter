@@ -19,7 +19,7 @@ from pathlib import Path
 class TTSPipeline:
     tts_list: List[BaseTTSModel] = []
 
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str):  # sourcery skip: dict-comprehension
         self.config: Config = Config(config_path)
         self.server = MessageServer(
             host=self.config.server.host,
@@ -92,6 +92,7 @@ class TTSPipeline:
         return message_text, have_text, have_other
 
     async def client_handle(self, message_dict: dict) -> None:
+        # sourcery skip: remove-redundant-if
         """处理客户端收到的消息并进行TTS转换（分群缓冲）"""
         message = MessageBase.from_dict(message_dict)
         stream_mode = self.config.tts_base_config.stream_mode
@@ -144,10 +145,10 @@ class TTSPipeline:
                 )
                 buffer.extend(message_text)
                 latest_message_obj = message_obj
-            except asyncio.TimeoutError: # 向下兼容3.10与3.11
+            except asyncio.TimeoutError:  # 向下兼容3.10与3.11
                 print("等待结束，进入处理")
                 break
-            except TimeoutError: # 支持3.12及以上版本
+            except TimeoutError:  # 支持3.12及以上版本
                 print("等待结束，进入处理")
                 break
             except Exception as e:
@@ -196,8 +197,7 @@ class TTSPipeline:
             # 对整个音频数据进行base64编码
             encoded_audio = encode_audio(audio_data)
             # 创建语音消息
-            new_seg = Seg(type="voice", data=encoded_audio)
-            return new_seg
+            return Seg(type="voice", data=encoded_audio)
         except Exception as e:
             print(f"TTS处理过程中发生错误: {str(e)}")
             print(f"文本为: {text}")
@@ -208,6 +208,7 @@ class TTSPipeline:
     ) -> None:
         """临时使用的原样发送函数"""
         for text in text_list:
+            print(f"文本为：{text}")
             new_seg = Seg(type="text", data=text)
             message.message_segment = new_seg
             await self.server.send_message(message)
@@ -228,7 +229,7 @@ class TTSPipeline:
         # tts_class = random.choice(self.tts_list)
         tts_class = self.tts_list[0]
         try:
-            audio_stream = tts_class.tts_stream(text=text, platform=platform)
+            audio_stream = await tts_class.tts_stream(text=text, platform=platform)
             # 从音频流中读取和处理数据
             for chunk in audio_stream:
                 if chunk:  # 确保chunk不为空

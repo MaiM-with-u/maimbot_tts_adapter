@@ -90,7 +90,7 @@ class TTSBaseConfigData:
 class TTSBaseConfig:
     def __init__(self, config_path: str):
         self.config_path = config_path
-        self.config_data = load_base_config(config_path)
+        self.config_data = load_tts_config(config_path)
         self.base_config = TTSBaseConfigData.from_dict(self.config_data)
         self.tts: TTSConfig = self.base_config.tts
         self.pipeline: PipelineConfig = self.base_config.pipeline
@@ -105,7 +105,7 @@ class TTSBaseConfig:
         return str(self.config_data)
 
 
-def load_base_config(config_path: str) -> Dict[str, Any]:
+def load_tts_config(config_path: str) -> Dict[str, Any]:
     """加载TOML配置文件
 
     Args:

@@ -3,18 +3,12 @@ import aiohttp
 from typing import Dict, Any, List
 from pathlib import Path
 from src.plugins.base_tts_model import BaseTTSModel
-from .model_config import TTSBaseConfig, TTSPreset
+from .tts_config import TTSBaseConfig, TTSPreset
 
 
 class TTSModel(BaseTTSModel):
-    def __init__(self, host="127.0.0.1", port=9880):
-        """初始化TTS模型
-
-        Args:
-            config: 配置对象,如果为None则使用默认配置
-            host: API服务器地址
-            port: API服务器端口
-        """
+    def __init__(self):
+        """初始化TTS模型"""
         self.config = self.load_config()
         if not self.config:
             raise ValueError("配置文件不存在或加载失败")
@@ -353,7 +347,7 @@ class TTSModel(BaseTTSModel):
                 response.raise_for_status()
                 return await response.read()
 
-    def tts_stream(
+    async def tts_stream(
         self,
         text,
         ref_audio_path=None,

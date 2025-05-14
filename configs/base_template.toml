@@ -13,4 +13,5 @@ voice_probability = 0.2 # 使用语音的概率
 enabled = ["GPT_Sovits"]
 
 [tts_base_config]
-stream_mode = false    # 是否启用流式输出
+stream_mode = false  # 是否启用流式输出
+post_process = false # 是否启用后处理（现阶段无效）

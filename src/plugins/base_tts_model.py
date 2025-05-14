@@ -36,7 +36,7 @@ class BaseTTSModel(ABC):
         pass
 
     @abstractmethod
-    def tts_stream(self, text: str, **kwargs):
+    async def tts_stream(self, text: str, **kwargs):
         """
         流式方式获取语音内容
 
