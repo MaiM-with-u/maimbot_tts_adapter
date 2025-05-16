@@ -11,7 +11,6 @@ class TTSConfigData:
     voice_character: str
     media_format: str
     base_url: str
-    
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "OmniTTSConfig":
@@ -39,11 +38,7 @@ class OmniTTSConfig:
         self.model_name: str = self.base_config.model_name
         self.voice_character: str = self.base_config.voice_character
         self.media_format: str = self.base_config.media_format
-        self.headers: Dict[str, str] = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
+        self.headers: Dict[str, str] = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
     def __getitem__(self, key: str) -> Any:
         return self.config_data[key]

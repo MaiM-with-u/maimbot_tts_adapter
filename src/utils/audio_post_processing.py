@@ -12,6 +12,8 @@ pydub的音频处理功能我也不熟悉
 所以如果你启用了但是被炸飞了
 请不要怪我
 """
+
+
 def process_audio(
     audio_data: bytes,
     volume_reduction_db: float = 0,
@@ -46,9 +48,7 @@ def process_audio(
 
         # 添加杂音 - 使用更加温和、自然的噪声
         if noise_level > 0 or blow_up:
-            audio_segment = add_noise(
-                audio_segment, noise_level, original_duration, blow_up
-            )
+            audio_segment = add_noise(audio_segment, noise_level, original_duration, blow_up)
 
         # 轻微混响效果
         audio_segment = add_reverb(audio_segment, original_duration, blow_up)
@@ -106,9 +106,7 @@ def low_pass_filter(audio_segment, cutoff_frequency: int) -> AudioSegment:
         return audio_segment
 
 
-def add_noise(
-    audio_segment, noise_level: float, original_duration: int, blow_up: bool
-) -> AudioSegment:
+def add_noise(audio_segment, noise_level: float, original_duration: int, blow_up: bool) -> AudioSegment:
     """
     添加背景噪声
 

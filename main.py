@@ -128,9 +128,7 @@ class TTSPipeline:
             self.text_buffer_dict[group_id] = asyncio.Queue()
         # 创建处理任务
         if group_id not in self.buffer_task_dict:
-            self.buffer_task_dict[group_id] = asyncio.create_task(
-                self._buffer_queue_handler(group_id)
-            )
+            self.buffer_task_dict[group_id] = asyncio.create_task(self._buffer_queue_handler(group_id))
         # 将文本加入队列
         await self.text_buffer_dict[group_id].put((message_text, message))
 
@@ -203,9 +201,7 @@ class TTSPipeline:
             print(f"文本为: {text}")
             return None
 
-    async def temporary_send_method(
-        self, message: MessageBase, text_list: List[str], group_id: str
-    ) -> None:
+    async def temporary_send_method(self, message: MessageBase, text_list: List[str], group_id: str) -> None:
         """临时使用的原样发送函数"""
         for text in text_list:
             print(f"文本为：{text}")

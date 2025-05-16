@@ -16,9 +16,7 @@ class TTSModel(BaseTTSModel):
 
     def load_config(self) -> "OmniTTSConfig":
         """加载配置文件"""
-        config_path = (
-            Path(__file__).parent.parent.parent.parent / "configs" / "qwen_omni.toml"
-        )
+        config_path = Path(__file__).parent.parent.parent.parent / "configs" / "qwen_omni.toml"
         if not config_path.exists():
             raise FileNotFoundError(f"配置文件不存在: {config_path}")
         return OmniTTSConfig(str(config_path))
@@ -63,9 +61,7 @@ class TTSModel(BaseTTSModel):
         Returns:
             音频数据的PCM字节流
         """
-        print(
-            f"开始调用大模型API生成音频，文本: {text[:30]}{'...' if len(text) > 30 else ''}"
-        )
+        print(f"开始调用大模型API生成音频，文本: {text[:30]}{'...' if len(text) > 30 else ''}")
         prompt = f"复述这句话，不要输出其他内容，只输出'{text}'就好，不要输出其他内容，不要输出前后缀，不要输出'{text}'以外的内容，不要说：如果还有类似的需求或者想聊聊别的"
         print(f"生成prompt: {prompt}")
         client = OpenAI(api_key=self.config.api_key, base_url=self.config.base_url)

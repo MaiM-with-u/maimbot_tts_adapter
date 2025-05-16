@@ -24,9 +24,7 @@ class TTSModel(BaseTTSModel):
 
     def load_config(self) -> "TTSBaseConfig":
         """加载配置文件"""
-        config_path = (
-            Path(__file__).parent.parent.parent.parent / "configs" / "gpt-sovits.toml"
-        )
+        config_path = Path(__file__).parent.parent.parent.parent / "configs" / "gpt-sovits.toml"
         if not config_path.exists():
             raise FileNotFoundError(f"配置文件不存在: {config_path}")
         return TTSBaseConfig(str(config_path))
@@ -155,9 +153,7 @@ class TTSModel(BaseTTSModel):
         # if not os.path.exists(weights_path):
         #     raise ValueError(f"GPT模型文件不存在: {weights_path}")
 
-        response = requests.get(
-            f"{self.base_url}/set_gpt_weights", params={"weights_path": weights_path}
-        )
+        response = requests.get(f"{self.base_url}/set_gpt_weights", params={"weights_path": weights_path})
         if response.status_code != 200:
             raise Exception(response.json()["message"])
 
@@ -173,9 +169,7 @@ class TTSModel(BaseTTSModel):
         # if not os.path.exists(weights_path):
         #     raise ValueError(f"SoVITS模型文件不存在: {weights_path}")
 
-        response = requests.get(
-            f"{self.base_url}/set_sovits_weights", params={"weights_path": weights_path}
-        )
+        response = requests.get(f"{self.base_url}/set_sovits_weights", params={"weights_path": weights_path})
         if response.status_code != 200:
             raise Exception(response.json()["message"])
 
@@ -226,9 +220,7 @@ class TTSModel(BaseTTSModel):
             speed_factor = speed_factor or cfg.speed_factor
             repetition_penalty = repetition_penalty or cfg.repetition_penalty
             sample_steps = sample_steps or cfg.sample_steps
-            super_sampling = (
-                super_sampling if super_sampling is not None else cfg.super_sampling
-            )
+            super_sampling = super_sampling if super_sampling is not None else cfg.super_sampling
         else:
             # 使用默认值
             text_lang = text_lang or "zh"
@@ -341,9 +333,7 @@ class TTSModel(BaseTTSModel):
             super_sampling=super_sampling,
         )
         async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{self.base_url}/tts", params=params, timeout=60
-            ) as response:  # noqa
+            async with session.get(f"{self.base_url}/tts", params=params, timeout=60) as response:  # noqa
                 response.raise_for_status()
                 return await response.read()
 

@@ -20,10 +20,7 @@ class TTSModels:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TTSModels":
-        presets = {
-            name: TTSPreset(**preset_data)
-            for name, preset_data in data.get("presets", {}).items()
-        }
+        presets = {name: TTSPreset(**preset_data) for name, preset_data in data.get("presets", {}).items()}
         return cls(
             gpt_model=data.get("gpt_model", ""),
             sovits_model=data.get("sovits_model", ""),
