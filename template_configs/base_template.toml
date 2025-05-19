@@ -3,7 +3,7 @@ host = "127.0.0.1"
 port = 8070
 
 [routes]
-qq = "http://127.0.0.1:8090/ws" # 或者nonebot-qq
+qq = "http://127.0.0.1:8000/ws" # 或者nonebot-qq
 # nonebot-qq = "default"
 
 [probability]
