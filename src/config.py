@@ -23,6 +23,7 @@ class EnabledPluginClass:
 @dataclass
 class ttsClass:
     stream_mode: bool
+    post_process: bool
 
 
 @dataclass
