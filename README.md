@@ -1,6 +1,6 @@
 # Maimbot TTS 适配器
 
-基于 GPT-SoVITS 的文本转语音(TTS)适配器，支持流式和非流式语音合成。
+基于多个服务商的文本转语音(TTS)适配器，支持流式和非流式语音合成。
 
 ## 功能特性
 
@@ -68,10 +68,11 @@ voice_probability = 0.2 # 使用语音的概率
 enabled = ["GPT_Sovits"]
 ```
 ### TTSBaseConfig 配置
-这部分是TTS的通用配置，此处仅有是否使用流式传输的标识
+这部分是TTS的通用配置
 ```toml
 [tts_base_config]
 stream_mode = false    # 是否启用流式输出
+post_process = false # 是否启用后处理（现阶段无效）
 ```
 
 ## 内置 GPT-SOVITS 插件 TTS 配置
@@ -103,6 +104,10 @@ default_preset = "default"                # 默认使用的预设名称
 platform1 = "preset1"
 platform2 = "preset2"
 ```
+
+## 内置其他服务商配置
+请参考[官方文档](https://docs.mai-mai.org/manual/adapters/tts/)使用。
+
 ## 使用方法
 
 1. 启动服务：
