@@ -71,25 +71,19 @@ class TTSPipeline:
     async def server_handle(self, message_data: dict):
         """处理服务器收到的消息"""
         message = MessageBase.from_dict(message_data)
+        if message.message_info.format_info:
+            if "voice" in message.message_info.format_info.accept_format:
+                message.message_info.format_info.accept_format.append("tts_text")
         await self.router.send_message(message)
 
-    def process_seg(self, seg: Seg) -> Tuple[List[str], bool, bool]:
-        have_text = False
-        have_other = False
-        message_text = []
+    def process_seg(self, seg: Seg) -> str:
+        message_text = ""
         if seg.type == "seglist":
             for s in seg.data:
-                zip_content = self.process_seg(s)
-                message_text += zip_content[0]
-                have_text = have_text or zip_content[1]
-                have_other = have_other or zip_content[2]
-        if seg.type == "text":
-            message_text.append(seg.data)
-            have_text = True
-        else:
-            # 标记含有其他类型的消息
-            have_other = True
-        return message_text, have_text, have_other
+                message_text += self.process_seg(s)
+        if seg.type == "tts_text":
+            message_text += seg.data
+        return message_text
 
     async def client_handle(self, message_dict: dict) -> None:
         # sourcery skip: remove-redundant-if
@@ -100,13 +94,11 @@ class TTSPipeline:
             await self.send_voice_stream(message)
             return
 
-        message_text, have_text, have_other = self.process_seg(message.message_segment)
-        if have_other and not have_text:
+        message_text = self.process_seg(message.message_segment)
+        if message_text == "":
             # 非文本消息直接透传
             await self.server.send_message(message)
             return
-        elif have_other and have_text:
-            print("检测到混合类型消息，丢弃其他类型")
 
         if not message_text:
             print("处理文本为空，跳过发送")
@@ -134,14 +126,12 @@ class TTSPipeline:
 
     async def _buffer_queue_handler(self, group_id: str) -> None:
         """处理每个群/用户的缓冲队列，定时合成语音并发送"""
-        buffer: List[str] = []
         latest_message_obj: MessageBase = None
         while True:
             try:
                 message_text, message_obj = await asyncio.wait_for(
                     self.text_buffer_dict[group_id].get(), timeout=self.buffer_timeout
                 )
-                buffer.extend(message_text)
                 latest_message_obj = message_obj
             except asyncio.TimeoutError:  # 向下兼容3.10与3.11
                 print("等待结束，进入处理")
@@ -152,16 +142,11 @@ class TTSPipeline:
             except Exception as e:
                 print(f"处理缓冲队列时发生错误: {str(e)}")
                 raise
-        if not buffer or not latest_message_obj:
+        if not message_text or not latest_message_obj:
             print("数据为空，跳过处理")
             await self.cleanup_task(group_id)
             return
-        if random.random() > self.config.probability.voice_probability:
-            # 使用临时的原样发送方式
-            print("发送原文本")
-            await self.temporary_send_method(latest_message_obj, buffer, group_id)
-            return
-        text: str = ",".join(buffer)
+        text: str = message_text.strip()
         print(f"[聊天: {group_id}]缓冲区合成文本:", text)
         message = latest_message_obj
         new_seg = await self.get_voice_no_stream(text, message.message_info.platform)
@@ -201,16 +186,6 @@ class TTSPipeline:
             print(f"文本为: {text}")
             return None
 
-    async def temporary_send_method(self, message: MessageBase, text_list: List[str], group_id: str) -> None:
-        """临时使用的原样发送函数"""
-        for text in text_list:
-            print(f"文本为：{text}")
-            new_seg = Seg(type="text", data=text)
-            message.message_segment = new_seg
-            await self.server.send_message(message)
-            await asyncio.sleep(1)
-        await self.cleanup_task(group_id)
-
     async def send_voice_stream(self, message: MessageBase) -> None:
         """流式发送语音消息"""
         platform = message.message_info.platform
@@ -233,9 +208,9 @@ class TTSPipeline:
                         # 对音频数据进行base64编码
                         encoded_chunk = encode_audio_stream(chunk)
                         # 创建语音消息
-                        new_seg = Seg(type="voice", data=encoded_chunk)
+                        new_seg = Seg(type="voice_stream", data=encoded_chunk)
                         message.message_segment = new_seg
-                        message.message_info.format_info.content_format = ["voice"]
+                        message.message_info.format_info.content_format = ["voice_stream"]
                         if not message.message_info.additional_config:
                             message.message_info.additional_config = {}
                         message.message_info.additional_config["original_text"] = text
