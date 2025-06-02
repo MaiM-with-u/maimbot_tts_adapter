@@ -11,7 +11,6 @@ from src.plugins.base_tts_model import BaseTTSModel
 from src.utils.audio_encode import encode_audio, encode_audio_stream
 import asyncio
 from typing import List, Tuple, Dict
-import random
 import importlib
 from pathlib import Path
 
@@ -242,107 +241,85 @@ class TTSPipeline:
                 except Exception as e:
                     print(f"取消缓冲任务时出错: {e}")
 
-        # 安全地停止服务器和路由器
-        try:
-            await self.server.stop()
-        except Exception as e:
-            print(f"停止服务器时发生错误: {e}")
+        # 如果有任务属性，先取消这些任务
+        tasks_to_cancel = []
+        if hasattr(self, "server_task") and not self.server_task.done():
+            self.server_task.cancel()
+            tasks_to_cancel.append(self.server_task)
 
+        if hasattr(self, "router_task") and not self.router_task.done():
+            self.router_task.cancel()
+            tasks_to_cancel.append(self.router_task)
+
+        # 等待任务取消完成
+        if tasks_to_cancel:
+            try:
+                await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
+            except Exception as e:
+                print(f"等待任务取消时出错: {e}")
+
+        # 安全地停止路由器（先停止路由器，因为它包含客户端连接）
         try:
             await self.router.stop()
         except Exception as e:
             print(f"停止路由器时发生错误: {e}")
 
-        # 如果有任务属性，取消这些任务
-        if hasattr(self, "server_task") and not self.server_task.done():
-            self.server_task.cancel()
+        # 安全地停止服务器
+        try:
+            await self.server.stop()
+        except Exception as e:
+            print(f"停止服务器时发生错误: {e}")
 
-        if hasattr(self, "router_task") and not self.router_task.done():
-            self.router_task.cancel()
+        # 给一点时间让连接完全关闭
+        await asyncio.sleep(0.1)
 
         print("TTS服务已停止")
 
 
-if __name__ == "__main__":
+async def main():
+    """主程序入口"""
     config_path = Path(__file__).parent / "configs" / "base.toml"
     pipeline = TTSPipeline(str(config_path))
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    # 定义信号处理函数和主程序
-    shutdown_requested = False
-
-    async def shutdown():
-        """安全地关闭服务"""
-        try:
-            print("正在关闭服务...")
-            await pipeline.stop()
-            print("服务已关闭")
-            return True
-        except Exception as e:
-            print(f"关闭服务时发生错误: {str(e)}")
-            return False
-
-    async def main():
-        """主程序"""
-        try:
-            # 启动服务
-            server_task, router_task = await pipeline.start()
-
-            # 等待直到程序终止（如Ctrl+C）
-            while not shutdown_requested:
-                await asyncio.sleep(0.5)
-
-            # 安全关闭
-            await shutdown()
-
-        except asyncio.CancelledError:
-            print("主任务被取消")
-            await shutdown()
-        except Exception as e:
-            print(f"运行中发生错误: {str(e)}")
-            await shutdown()
 
     try:
-        # 设置信号处理
-        import signal
+        print("正在启动TTS服务...")
+        # 启动服务
+        server_task, router_task = await pipeline.start()
+        print("TTS服务已启动，按 Ctrl+C 退出")
 
-        # 定义信号处理函数
-        def handle_signal():
-            global shutdown_requested
-            print("接收到中断信号，准备关闭...")
-            shutdown_requested = True
+        # 等待任务完成或中断
+        await asyncio.gather(server_task, router_task)
 
-        # 注册信号处理
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, handle_signal)
-
-        # 运行主程序
-        loop.run_until_complete(main())
     except KeyboardInterrupt:
-        print("接收到键盘中断...")
+        print("\n接收到键盘中断信号...")
     except Exception as e:
-        print(f"发生错误: {str(e)}")
+        print(f"运行过程中发生错误: {str(e)}")
     finally:
-        # 确保服务被关闭
-        if not loop.is_closed():
-            try:
-                # 带超时的关闭服务
-                loop.run_until_complete(asyncio.wait_for(shutdown(), timeout=5.0))
-            except:
-                print("关闭服务超时或出错")
+        print("正在关闭服务...")
+        try:
+            # 增加超时时间，确保有足够时间清理资源
+            await asyncio.wait_for(pipeline.stop(), timeout=15.0)
+            print("服务已安全关闭")
+        except asyncio.TimeoutError:
+            print("关闭服务超时，强制退出")
+        except Exception as e:
+            print(f"关闭服务时发生错误: {str(e)}")
 
-            # 取消所有未完成的任务
-            pending = asyncio.all_tasks(loop)
-            if pending:
-                for task in pending:
-                    task.cancel()
+        # 额外的清理步骤：等待一小段时间让所有资源完全释放
+        await asyncio.sleep(0.2)
 
-                # 等待任务取消
-                try:
-                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-                except:
-                    pass
 
-            # 关闭事件循环
-            loop.close()
+if __name__ == "__main__":
+    try:
+        # 使用 asyncio.run() 来运行程序，这是现代化的做法
+        # 它会自动处理事件循环的创建和清理
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n程序已退出")
+    except Exception as e:
+        print(f"程序启动失败: {str(e)}")
+    finally:
+        # 给系统一点时间完成所有清理工作
+        import time
+
+        time.sleep(0.1)
