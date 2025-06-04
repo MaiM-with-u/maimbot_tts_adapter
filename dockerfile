@@ -18,7 +18,7 @@ RUN mkdir -p /maimbot_tts_adapter/configs && \
 EXPOSE 8070
 
 # 定义可以被映射的卷
-VOLUME ["/maimbot_tts_adapter/config"]
+VOLUME ["/maimbot_tts_adapter/configs"]
 
 # 运行应用
 CMD ["python", "main.py"]
