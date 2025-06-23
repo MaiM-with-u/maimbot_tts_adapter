@@ -5,6 +5,7 @@ from pathlib import Path
 
 logging_level = "INFO"  # Default logging level, can be overridden by config
 
+
 @dataclass
 class ServerConfig:
     host: str
@@ -25,6 +26,7 @@ class EnabledPluginClass:
 class ttsClass:
     stream_mode: bool
     post_process: bool
+
 
 @dataclass
 class BaseConfig:
