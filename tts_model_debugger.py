@@ -6,6 +6,7 @@ from typing import List
 import soundfile as sf
 import numpy as np
 
+
 class TTSModelDebugger:
     def __init__(self, config_path: str):
         self.config_path = config_path
@@ -14,6 +15,7 @@ class TTSModelDebugger:
     def import_module(self):
         """动态导入TTS适配"""
         from src.config import Config
+
         config = Config(self.config_path)
         for tts in config.enabled_plugin.enabled:
             module_name = f"src.plugins.{tts}"
@@ -40,13 +42,14 @@ class TTSModelDebugger:
                 audio_data = await tts_class.tts(text=text, platform=platform)
                 audio_np = np.frombuffer(audio_data, dtype=np.int16)
                 print(f"模型 {tts_class.__class__.__name__} 生成了音频数据，长度: {len(audio_data)} bytes")
-                
+
                 # 将音频数据写入WAV文件
                 # output_file = f"{tts_class.__class__.__name__}_output.wav"
                 # sf.write(output_file, audio_np, samplerate=48000, format='WAV')
                 # print(f"音频已保存到 {output_file}")
             except Exception as e:
                 print(f"模型 {tts_class.__class__.__name__} 处理失败: {e}")
+
 
 if __name__ == "__main__":
     config_path = Path(__file__).parent / "configs" / "base.toml"

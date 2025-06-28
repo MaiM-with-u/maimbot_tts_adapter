@@ -3,6 +3,8 @@ from typing import Dict, Any, List
 import toml
 from pathlib import Path
 
+logging_level = "INFO"  # Default logging level, can be overridden by config
+
 
 @dataclass
 class ServerConfig:
@@ -92,6 +94,9 @@ def load_config(config_path: str) -> Dict[str, Any]:
     """
     with open(config_path, "r", encoding="utf-8") as f:
         config = toml.load(f)
+    global logging_level
+    # 设置全局日志级别
+    logging_level = config["debug"].get("logging_level", "INFO").upper()
     return config
 
 

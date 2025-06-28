@@ -7,6 +7,7 @@ from maim_message import (
     Seg,
 )
 from src.config import Config
+from src.logger import logger
 from src.plugins.base_tts_model import BaseTTSModel
 from src.utils.audio_encode import encode_audio, encode_audio_stream
 import asyncio
@@ -50,13 +51,13 @@ class TTSPipeline:
                 tts_class: BaseTTSModel = module.TTSModel()
                 self.tts_list.append(tts_class)
             except ImportError as e:
-                print(f"Error importing {module_name}: {e}")
+                logger.error(f"Error importing {module_name}: {e}")
                 raise
             except AttributeError as e:
-                print(f"Error accessing TTSModel in {module_name}: {e}")
+                logger.error(f"Error accessing TTSModel in {module_name}: {e}")
                 raise
             except Exception as e:
-                print(f"Unexpected error importing {module_name}: {e}")
+                logger.error(f"Unexpected error importing {module_name}: {e}")
                 raise
 
     async def start(self):
@@ -71,9 +72,8 @@ class TTSPipeline:
     async def server_handle(self, message_data: dict):
         """处理服务器收到的消息"""
         message = MessageBase.from_dict(message_data)
-        if message.message_info.format_info:
-            if "voice" in message.message_info.format_info.accept_format:
-                message.message_info.format_info.accept_format.append("tts_text")
+        if message.message_info.format_info and "voice" in message.message_info.format_info.accept_format:
+            message.message_info.format_info.accept_format.append("tts_text")
         await self.router.send_message(message)
 
     def process_seg(self, seg: Seg) -> str:
@@ -102,16 +102,16 @@ class TTSPipeline:
             return
 
         if not message_text:
-            print("处理文本为空，跳过发送")
+            logger.warning("处理文本为空，跳过发送")
             return
 
         # 获取分组ID（优先群id，否则用户id）
         group_id = getattr(message.message_info.group_info, "group_id", None)
         if group_id is None:
-            print("没有群消息id使用用户id代替")
+            logger.warning("没有群消息id使用用户id代替")
             group_id = getattr(message.message_info.user_info, "user_id", None)
         if not group_id:
-            print("无法定位目标发送位置，跳过TTS处理")
+            logger.warning("无法定位目标发送位置，跳过TTS处理")
             await self.server.send_message(message)
             return
         group_id = str(group_id)
@@ -135,24 +135,24 @@ class TTSPipeline:
                 )
                 latest_message_obj = message_obj
             except asyncio.TimeoutError:  # 向下兼容3.10与3.11
-                print("等待结束，进入处理")
+                logger.info("等待结束，进入处理")
                 break
             except TimeoutError:  # 支持3.12及以上版本
-                print("等待结束，进入处理")
+                logger.info("等待结束，进入处理")
                 break
             except Exception as e:
-                print(f"处理缓冲队列时发生错误: {str(e)}")
+                logger.info(f"处理缓冲队列时发生错误: {str(e)}")
                 raise
         if not message_text or not latest_message_obj:
-            print("数据为空，跳过处理")
+            logger.warning("数据为空，跳过处理")
             await self.cleanup_task(group_id)
             return
         text: str = message_text.strip()
-        print(f"[聊天: {group_id}]缓冲区合成文本:", text)
+        logger.info(f"[聊天: {group_id}]缓冲区合成文本:", text)
         message = latest_message_obj
         new_seg = await self.get_voice_no_stream(text, message.message_info.platform)
         if not new_seg:
-            print("语音消息为空，跳过发送")
+            logger.warning("语音消息为空，跳过发送")
             await self.cleanup_task(group_id)
             return
         message.message_segment = new_seg
@@ -171,7 +171,7 @@ class TTSPipeline:
     async def get_voice_no_stream(self, text: str, platform: str) -> Seg | None:
         """获取语音消息段"""
         if not self.tts_list:
-            print("没有启用任何tts，跳过处理")
+            logger.warning("没有启用任何tts，跳过处理")
             return None
         # tts_class = random.choice(self.tts_list)
         tts_class = self.tts_list[0]
@@ -183,8 +183,8 @@ class TTSPipeline:
             # 创建语音消息
             return Seg(type="voice", data=encoded_audio)
         except Exception as e:
-            print(f"TTS处理过程中发生错误: {str(e)}")
-            print(f"文本为: {text}")
+            logger.error(f"TTS处理过程中发生错误: {str(e)}")
+            logger.info(f"文本为: {text}")
             return None
 
     async def send_voice_stream(self, message: MessageBase) -> None:
@@ -192,11 +192,11 @@ class TTSPipeline:
         platform = message.message_info.platform
         message_text = self.process_seg(message.message_segment)
         if not message_text:
-            print("处理文本为空，跳过发送")
+            logger.warning("处理文本为空，跳过发送")
             return
         text = message_text
         if not self.tts_list:
-            print("没有启用任何tts，跳过处理")
+            logger.warning("没有启用任何tts，跳过处理")
             return None
         # tts_class = random.choice(self.tts_list)
         tts_class = self.tts_list[0]
@@ -219,17 +219,17 @@ class TTSPipeline:
                         # 发送到下游
                         await self.server.send_message(message)
                     except Exception as e:
-                        print(f"处理音频块时发生错误: {str(e)}")
+                        logger.error(f"处理音频块时发生错误: {str(e)}")
                         continue
-            print("流式语音消息发送完成")
+            logger.info("流式语音消息发送完成")
         except Exception as e:
-            print(f"TTS处理过程中发生错误: {str(e)}")
-            print(f"文本为: {text}")
+            logger.error(f"TTS处理过程中发生错误: {str(e)}")
+            logger.info(f"文本为: {text}")
             return None
 
     async def stop(self):
         """停止服务器和路由"""
-        print("正在停止TTS服务...")
+        logger.info("正在停止TTS服务...")
         # 停止所有正在运行的缓冲任务
         for _, task in list(self.buffer_task_dict.items()):
             if not task.done() and not task.cancelled():
@@ -239,7 +239,7 @@ class TTSPipeline:
                 except asyncio.CancelledError:
                     pass
                 except Exception as e:
-                    print(f"取消缓冲任务时出错: {e}")
+                    logger.error(f"取消缓冲任务时出错: {e}")
 
         # 如果有任务属性，先取消这些任务
         tasks_to_cancel = []
@@ -256,24 +256,24 @@ class TTSPipeline:
             try:
                 await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
             except Exception as e:
-                print(f"等待任务取消时出错: {e}")
+                logger.error(f"等待任务取消时出错: {e}")
 
         # 安全地停止路由器（先停止路由器，因为它包含客户端连接）
         try:
             await self.router.stop()
         except Exception as e:
-            print(f"停止路由器时发生错误: {e}")
+            logger.error(f"停止路由器时发生错误: {e}")
 
         # 安全地停止服务器
         try:
             await self.server.stop()
         except Exception as e:
-            print(f"停止服务器时发生错误: {e}")
+            logger.error(f"停止服务器时发生错误: {e}")
 
         # 给一点时间让连接完全关闭
         await asyncio.sleep(0.1)
 
-        print("TTS服务已停止")
+        logger.info("TTS服务已停止")
 
 
 async def main():
@@ -282,28 +282,28 @@ async def main():
     pipeline = TTSPipeline(str(config_path))
 
     try:
-        print("正在启动TTS服务...")
+        logger.info("正在启动TTS服务...")
         # 启动服务
         server_task, router_task = await pipeline.start()
-        print("TTS服务已启动，按 Ctrl+C 退出")
+        logger.info("TTS服务已启动，按 Ctrl+C 退出")
 
         # 等待任务完成或中断
         await asyncio.gather(server_task, router_task)
 
     except KeyboardInterrupt:
-        print("\n接收到键盘中断信号...")
+        logger.debug("\n接收到键盘中断信号...")
     except Exception as e:
-        print(f"运行过程中发生错误: {str(e)}")
+        logger.error(f"运行过程中发生错误: {str(e)}")
     finally:
-        print("正在关闭服务...")
+        logger.info("正在关闭服务...")
         try:
             # 增加超时时间，确保有足够时间清理资源
             await asyncio.wait_for(pipeline.stop(), timeout=15.0)
-            print("服务已安全关闭")
+            logger.info("服务已安全关闭")
         except asyncio.TimeoutError:
-            print("关闭服务超时，强制退出")
+            logger.warning("关闭服务超时，强制退出")
         except Exception as e:
-            print(f"关闭服务时发生错误: {str(e)}")
+            logger.error(f"关闭服务时发生错误: {str(e)}")
 
         # 额外的清理步骤：等待一小段时间让所有资源完全释放
         await asyncio.sleep(0.2)
@@ -315,9 +315,9 @@ if __name__ == "__main__":
         # 它会自动处理事件循环的创建和清理
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n程序已退出")
+        logger.info("\n程序已退出")
     except Exception as e:
-        print(f"程序启动失败: {str(e)}")
+        logger.error(f"程序启动失败: {str(e)}")
     finally:
         # 给系统一点时间完成所有清理工作
         import time

@@ -5,6 +5,10 @@ from pathlib import Path
 from src.plugins.base_tts_model import BaseTTSModel
 from .tts_config import TTSBaseConfig, TTSPreset
 
+response_error_status_list = [
+    400,  # Bad Request
+]
+
 
 class TTSModel(BaseTTSModel):
     def __init__(self):
@@ -334,6 +338,14 @@ class TTSModel(BaseTTSModel):
         )
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{self.base_url}/tts", params=params, timeout=60) as response:  # noqa
+                if response.status in response_error_status_list:
+                    error_response = await response.json()
+                    error_message = error_response.get("message", "未知错误")
+                    exception_message = error_response.get("Exception", "")
+                    raise aiohttp.ClientError(
+                        f"请求失败: {response.status}, 错误信息: {error_message}"
+                        + (f"，Exception: {exception_message}" if exception_message else "")
+                    )
                 response.raise_for_status()
                 return await response.read()
 
@@ -411,7 +423,13 @@ class TTSModel(BaseTTSModel):
         )
 
         if response.status_code != 200:
-            raise Exception(response.json()["message"])
+            prased_response = response.json()
+            message = prased_response.get("message", "未知错误")
+            exception_message = prased_response.get("Exception", "")
+            raise aiohttp.ClientError(
+                f"请求失败: {response.status_code}, 错误信息: {message}"
+                + (f"，Exception: {exception_message}" if exception_message else "")
+            )
 
         # 使用更小的块大小来提高流式传输的响应性
         return response.iter_content(chunk_size=4096)

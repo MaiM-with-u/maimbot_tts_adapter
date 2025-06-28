@@ -2,9 +2,9 @@ requests>=2.31.0
 toml>=0.10.2
 numpy
 soundfile>=0.12.1
-wave>=0.0.2
 base64io>=1.0.3
 pydub>=0.25.1
 pyyaml>=6.0
 openai
 maim_message
+loguru
