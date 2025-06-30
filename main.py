@@ -126,29 +126,15 @@ class TTSPipeline:
         await self.text_buffer_dict[group_id].put((message_text, message))
 
     async def _buffer_queue_handler(self, group_id: str) -> None:
-        """处理每个群/用户的缓冲队列，定时合成语音并发送"""
-        latest_message_obj: MessageBase = None
-        while True:
-            try:
-                message_text, message_obj = await asyncio.wait_for(
-                    self.text_buffer_dict[group_id].get(), timeout=self.buffer_timeout
-                )
-                latest_message_obj = message_obj
-            except asyncio.TimeoutError:  # 向下兼容3.10与3.11
-                logger.info("等待结束，进入处理")
-                break
-            except TimeoutError:  # 支持3.12及以上版本
-                logger.info("等待结束，进入处理")
-                break
-            except Exception as e:
-                logger.info(f"处理缓冲队列时发生错误: {str(e)}")
-                raise
+        """处理每个群/用户的缓冲队列，合成语音并发送"""
+        message_text, latest_message_obj = await self.text_buffer_dict[group_id].get()
+        self.text_buffer_dict[group_id].task_done()
         if not message_text or not latest_message_obj:
             logger.warning("数据为空，跳过处理")
             await self.cleanup_task(group_id)
             return
         text: str = message_text.strip()
-        logger.info(f"[聊天: {group_id}]缓冲区合成文本:", text)
+        logger.info(f"[聊天: {group_id}]将合成文本: {text}")
         message = latest_message_obj
         new_seg = await self.get_voice_no_stream(text, message.message_info.platform)
         if not new_seg:
