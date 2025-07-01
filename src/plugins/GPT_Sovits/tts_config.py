@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Any, List
 import toml
 
@@ -6,24 +6,24 @@ import toml
 @dataclass
 class TTSPreset:
     name: str
-    ref_audio: str
+    ref_audio_path: str
     prompt_text: str
-    gpt_model: str = ""
-    sovits_model: str = ""
+    gpt_model: str = field(default="")
+    sovits_model: str = field(default="")
+    aux_ref_audio_paths: List[str] = field(default_factory=list)
+    text_language: str = field(default="auto")
+    prompt_language: str = field(default="zh")
+    speed_factor: float = field(default=1.0)
 
 
 @dataclass
 class TTSModels:
-    gpt_model: str
-    sovits_model: str
     presets: Dict[str, TTSPreset]
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TTSModels":
         presets = {name: TTSPreset(**preset_data) for name, preset_data in data.get("presets", {}).items()}
         return cls(
-            gpt_model=data.get("gpt_model", ""),
-            sovits_model=data.get("sovits_model", ""),
             presets=presets,
         )
 
@@ -32,23 +32,17 @@ class TTSModels:
 class TTSConfig:
     host: str
     port: int
-    ref_audio_path: str
-    prompt_text: str
-    aux_ref_audio_paths: List[str]
-    text_language: str
-    prompt_language: str
-    media_type: str
     top_k: int
     top_p: float
     temperature: float
     batch_size: int
     batch_threshold: float
-    speed_factor: float
     text_split_method: str
     repetition_penalty: float
     sample_steps: int
     super_sampling: bool
     models: TTSModels
+    media_type: str = field(default="wav")
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TTSConfig":
@@ -67,8 +61,8 @@ class PipelineConfig:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PipelineConfig":
         return cls(
-            default_preset=data.get("default_preset", "default"),
-            platform_presets=data.get("platform_presets", {}),
+            default_preset=data.get("default_preset"),
+            platform_presets=data.get("platform_presets"),
         )
 
 

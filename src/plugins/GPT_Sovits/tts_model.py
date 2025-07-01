@@ -22,8 +22,10 @@ class TTSModel(BaseTTSModel):
         self.base_url = f"http://{self.host}:{self.port}"
         self._ref_audio_path: str = None  # 存储当前使用的参考音频路径
         self._prompt_text: str = ""  # 存储当前使用的提示文本
-        self._current_preset: str = "default"  # 当前使用的角色预设名称
+        self._current_preset: str = ""  # 当前使用的角色预设名称
         self._initialized: bool = False  # 标记是否已完成初始化
+        self._loaded_gpt_weights: str = ""  # 标记当前的gpt_weights名称
+        self._loaded_sovits_weights: str = ""  # 标记当前的sovits_weights名称
         self.initialize()
 
     def load_config(self) -> "TTSBaseConfig":
@@ -41,17 +43,11 @@ class TTSModel(BaseTTSModel):
         if self._initialized:
             return
         self._initialized = True
-
-        if self.config:
-            if self.config.tts.models.gpt_model:
-                self.set_gpt_weights(self.config.tts.models.gpt_model)
-            if self.config.tts.models.sovits_model:
-                self.set_sovits_weights(self.config.tts.models.sovits_model)
-
         # 设置默认角色预设
         if self.config:
-            self.load_preset("default")
-            self._current_preset = "default"
+            self.load_preset(self.config.pipeline.default_preset)
+        else:
+            raise RuntimeError("配置文件未加载或出现错误！")
 
     @property
     def ref_audio_path(self) -> str | None:
@@ -99,7 +95,7 @@ class TTSModel(BaseTTSModel):
             raise ValueError(f"预设 {preset_name} 不存在")
 
         # 设置参考音频和提示文本
-        self.set_refer_audio(preset.ref_audio, preset.prompt_text)
+        self.set_refer_audio(preset.ref_audio_path, preset.prompt_text)
 
         # 如果预设指定了模型，则切换模型
         if preset.gpt_model:
@@ -116,7 +112,7 @@ class TTSModel(BaseTTSModel):
             platform: 平台名称
 
         Returns:
-            预设配置字典，如果不存在则返回None
+            预设配置字典名称，如果不存在则返回None
         """
         preset = self.config.pipeline.platform_presets.get(platform)
         if not preset:
@@ -139,9 +135,6 @@ class TTSModel(BaseTTSModel):
         if not prompt_text:
             raise ValueError("prompt_text不能为空")
 
-        # if not os.path.exists(audio_path):
-        #     raise ValueError(f"音频文件不存在: {audio_path}")
-
         self._ref_audio_path = audio_path
         self._prompt_text = prompt_text
 
@@ -152,14 +145,14 @@ class TTSModel(BaseTTSModel):
         Args:
             weights_path: 权重文件路径
         Raises:
-            Exception: 当设置gpt weights失败时抛出异常
+            RuntimeError: 当设置gpt weights失败时抛出异常
         """
-        # if not os.path.exists(weights_path):
-        #     raise ValueError(f"GPT模型文件不存在: {weights_path}")
-
+        if self._loaded_gpt_weights == weights_path:
+            # 如果已经加载过相同的权重，则不需要重复设置
+            return
         response = requests.get(f"{self.base_url}/set_gpt_weights", params={"weights_path": weights_path})
         if response.status_code != 200:
-            raise Exception(response.json()["message"])
+            raise RuntimeError(response.json()["message"])
 
     def set_sovits_weights(self, weights_path):
         """
@@ -168,14 +161,14 @@ class TTSModel(BaseTTSModel):
         Args:
             weights_path: 权重文件路径
         Raises:
-            Exception: 当设置sovits weights失败时抛出异常
+            RuntimeError: 当设置sovits weights失败时抛出异常
         """
-        # if not os.path.exists(weights_path):
-        #     raise ValueError(f"SoVITS模型文件不存在: {weights_path}")
-
+        if self._loaded_sovits_weights == weights_path:
+            # 如果已经加载过相同的权重，则不需要重复设置
+            return
         response = requests.get(f"{self.base_url}/set_sovits_weights", params={"weights_path": weights_path})
         if response.status_code != 200:
-            raise Exception(response.json()["message"])
+            raise RuntimeError(response.json()["message"])
 
     def build_parameters(
         self,
@@ -197,6 +190,7 @@ class TTSModel(BaseTTSModel):
         repetition_penalty: float = None,
         sample_steps: int = None,
         super_sampling: bool = None,
+        preset_name: str = None,
     ) -> Dict[str, Any]:
         """构建请求参数"""
         if not self._initialized:
@@ -208,58 +202,28 @@ class TTSModel(BaseTTSModel):
             raise ValueError("未设置参考音频")
 
         prompt_text = prompt_text if prompt_text is not None else self._prompt_text
-
-        # 使用配置文件默认值
-        if self.config:
-            cfg = self.config.tts
-            text_lang = text_lang or cfg.text_language
-            prompt_lang = prompt_lang or cfg.prompt_language
-            media_type = media_type or cfg.media_type
-            top_k = top_k or cfg.top_k
-            top_p = top_p or cfg.top_p
-            temperature = temperature or cfg.temperature
-            text_split_method = text_split_method or cfg.text_split_method
-            batch_size = batch_size or cfg.batch_size
-            batch_threshold = batch_threshold or cfg.batch_threshold
-            speed_factor = speed_factor or cfg.speed_factor
-            repetition_penalty = repetition_penalty or cfg.repetition_penalty
-            sample_steps = sample_steps or cfg.sample_steps
-            super_sampling = super_sampling if super_sampling is not None else cfg.super_sampling
-        else:
-            # 使用默认值
-            text_lang = text_lang or "zh"
-            prompt_lang = prompt_lang or "zh"
-            media_type = media_type or "wav"
-            top_k = top_k or 5
-            top_p = top_p or 1.0
-            temperature = temperature or 1.0
-            text_split_method = text_split_method or "cut5"
-            batch_size = batch_size or 1
-            batch_threshold = batch_threshold or 0.75
-            speed_factor = speed_factor or 1.0
-            repetition_penalty = repetition_penalty or 1.35
-            sample_steps = sample_steps or 32
-            super_sampling = super_sampling or False
+        preset_cfg = self.config.tts.models.presets.get(preset_name)
+        global_cfg = self.config.tts
 
         params = {
             "text": text,
-            "text_lang": text_lang,
-            "ref_audio_path": ref_audio_path,
-            "aux_ref_audio_paths": aux_ref_audio_paths,
-            "prompt_text": prompt_text,
-            "prompt_lang": prompt_lang,
-            "top_k": top_k,
-            "top_p": top_p,
-            "temperature": temperature,
-            "text_split_method": text_split_method,
-            "batch_size": batch_size,
-            "batch_threshold": batch_threshold,
-            "speed_factor": speed_factor,
-            "streaming_mode": str(streaming_mode) if streaming_mode is not None else None,
-            "media_type": media_type,
-            "repetition_penalty": repetition_penalty,
-            "sample_steps": sample_steps,
-            "super_sampling": str(super_sampling) if super_sampling is not None else None,
+            "text_lang": text_lang or preset_cfg.text_language or "auto",  # 缺省情况为auto
+            "ref_audio_path": ref_audio_path or preset_cfg.ref_audio_path,
+            "aux_ref_audio_paths": aux_ref_audio_paths or preset_cfg.aux_ref_audio_paths,
+            "prompt_text": prompt_text or preset_cfg.prompt_text,
+            "prompt_lang": prompt_lang or preset_cfg.prompt_language or "zh",  # 缺省情况为zh
+            "top_k": top_k or global_cfg.top_k or 5,
+            "top_p": top_p or global_cfg.top_p or 1.0,
+            "temperature": temperature or global_cfg.temperature or 1.0,
+            "text_split_method": text_split_method or global_cfg.text_split_method or "cut5",
+            "batch_size": batch_size or global_cfg.batch_size or 1,
+            "batch_threshold": batch_threshold or global_cfg.batch_threshold or 0.75,
+            "speed_factor": speed_factor or preset_cfg.speed_factor or 1.0,
+            "streaming_mode": str(streaming_mode if streaming_mode is not None else False),  # 缺省为False
+            "media_type": media_type or global_cfg.media_type or "wav",
+            "repetition_penalty": repetition_penalty or global_cfg.repetition_penalty or 1.35,
+            "sample_steps": sample_steps or global_cfg.sample_steps or 32,
+            "super_sampling": str(super_sampling or global_cfg.super_sampling),
         }
         params = {k: v for k, v in params.items() if v is not None}
         return params
@@ -311,8 +275,7 @@ class TTSModel(BaseTTSModel):
         """
         platform = kwargs.get("platform")
         if not platform:
-            print("未指定平台,使用默认平台")
-            platform = "default"
+            raise RuntimeError("未指定平台，请在kwargs中传入platform参数")
         preset_name = self.get_platform_preset(platform)
         if self._current_preset != preset_name:
             self.load_preset(preset_name)
@@ -335,6 +298,7 @@ class TTSModel(BaseTTSModel):
             repetition_penalty=repetition_penalty,
             sample_steps=sample_steps,
             super_sampling=super_sampling,
+            preset_name=preset_name,  # 添加预设名称参数
         )
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{self.base_url}/tts", params=params, timeout=60) as response:  # noqa
@@ -423,9 +387,9 @@ class TTSModel(BaseTTSModel):
         )
 
         if response.status_code != 200:
-            prased_response = response.json()
-            message = prased_response.get("message", "未知错误")
-            exception_message = prased_response.get("Exception", "")
+            parsed_response = response.json()
+            message = parsed_response.get("message", "未知错误")
+            exception_message = parsed_response.get("Exception", "")
             raise aiohttp.ClientError(
                 f"请求失败: {response.status_code}, 错误信息: {message}"
                 + (f"，Exception: {exception_message}" if exception_message else "")
