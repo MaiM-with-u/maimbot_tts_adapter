@@ -13,6 +13,7 @@ from src.utils.audio_encode import encode_audio, encode_audio_stream
 import asyncio
 from typing import List, Tuple, Dict
 import importlib
+import toml
 from pathlib import Path
 
 
@@ -63,6 +64,9 @@ class TTSPipeline:
     async def start(self):
         """启动服务器和路由，并导入设定的模块"""
         self.import_module()
+        py_project_path = Path(__file__).parent / "pyproject.toml"
+        toml_data = toml.load(py_project_path)
+        logger.info(f"版本信息\n\n当前版本: {toml_data['project']['version']}\n")
         # 创建任务而不是直接返回 gather 结果
         self.server_task = asyncio.create_task(self.server.run())
         self.router_task = asyncio.create_task(self.router.run())
