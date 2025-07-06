@@ -1,6 +1,6 @@
 [project]
 name = "MaiBotTTSAdapter"
-version = "0.2.3"
+version = "0.3.0"
 description = "A TTS adapter for MaiBot"
 
 [tool.ruff]
