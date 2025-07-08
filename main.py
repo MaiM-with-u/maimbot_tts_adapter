@@ -40,7 +40,6 @@ class TTSPipeline:
         # 按群/用户分组的文本缓冲队列和处理任务
         self.text_buffer_dict: Dict[str, asyncio.Queue[Tuple[str, MessageBase]]] = {}
         self.buffer_task_dict: Dict[str, asyncio.Task] = {}
-        self.buffer_timeout: int = 2  # 默认2秒
 
     def import_module(self):
         """动态导入TTS适配"""
