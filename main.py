@@ -10,10 +10,12 @@ from src.config import Config
 from src.logger import logger
 from src.plugins.base_tts_model import BaseTTSModel
 from src.utils.audio_encode import encode_audio, encode_audio_stream
+from src.utils import post_process
 import asyncio
 from typing import List, Tuple, Dict
 import importlib
 import toml
+import random
 from pathlib import Path
 
 
@@ -94,6 +96,11 @@ class TTSPipeline:
         """处理客户端收到的消息并进行TTS转换（分群缓冲）"""
         message = MessageBase.from_dict(message_dict)
         stream_mode = self.config.tts_base_config.stream_mode
+        if message.message_segment.type != 'tts_text' and random.random() > self.config.probability.voice_probability:
+            #  如果概率不满足，直接透传消息
+            await self.server.send_message(message)
+            return
+        
         if stream_mode:
             await self.send_voice_stream(message)
             return
@@ -156,7 +163,7 @@ class TTSPipeline:
     async def cleanup_task(self, group_id: str):
         task = self.buffer_task_dict.pop(group_id)
         task.cancel()
-
+ 
     async def get_voice_no_stream(self, text: str, platform: str) -> Seg | None:
         """获取语音消息段"""
         if not self.tts_list:
@@ -167,6 +174,9 @@ class TTSPipeline:
         try:
             # 使用非流式TTS
             audio_data = await tts_class.tts(text=text, platform=platform)
+            if self.config.tts_base_config.post_process:
+                # 如果启用了后处理，进行电话语音模拟
+                audio_data = post_process.simulate_telephone_voice(audio_data)
             # 对整个音频数据进行base64编码
             encoded_audio = encode_audio(audio_data)
             # 创建语音消息
