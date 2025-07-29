@@ -152,7 +152,7 @@ class TTSModel(BaseTTSModel):
             return
         response = requests.get(f"{self.base_url}/set_gpt_weights", params={"weights_path": weights_path})
         if response.status_code != 200:
-            raise RuntimeError(response.json()["message"])
+            raise RuntimeError(f"{response.json().get('message', '')}: {response.json().get('Exception', '')}")
 
     def set_sovits_weights(self, weights_path):
         """
@@ -168,7 +168,7 @@ class TTSModel(BaseTTSModel):
             return
         response = requests.get(f"{self.base_url}/set_sovits_weights", params={"weights_path": weights_path})
         if response.status_code != 200:
-            raise RuntimeError(response.json()["message"])
+            raise RuntimeError(f"{response.json().get('message', '')}: {response.json().get('Exception', '')}")
 
     def build_parameters(
         self,
